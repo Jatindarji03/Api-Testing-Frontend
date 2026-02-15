@@ -1,7 +1,7 @@
-import SignUpPage from './features/auth/pages/SignUpPage'
+import SignInPage from './features/auth/pages/SignInPage'
 
 function App() {
-  return <SignUpPage />
+  return <SignInPage />
 }
 
 export default App
