@@ -1,0 +1,27 @@
+
+@import "tailwindcss";
+
+@theme {
+  --color-bg-main: #050816;
+  --color-primary-brand: #9929EA;
+  --color-accent-soft: #CC66DA;
+  --color-highlight: #FAEB92;
+
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-mono: "Victor Mono", monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg-main);
+    color: #fff;
+    font-family: var(--font-jakarta);
+  }
+}
