@@ -1,23 +1,17 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { signUp } from '../../../api/auth/signUpApi'
+import { signIn } from '../../../api/auth/signInApi'
 import AuthCard from '../../../components/ui/AuthCard'
 import Button from '../../../components/ui/Button'
 import FormField from '../../../components/ui/FormField'
 
 const initialForm = {
-  fullName: '',
   email: '',
   password: '',
-  confirmPassword: '',
 }
 
 function validate(form) {
   const errors = {}
-
-  if (!form.fullName.trim()) {
-    errors.fullName = 'Full name is required.'
-  }
 
   if (!form.email.trim()) {
     errors.email = 'Email is required.'
@@ -31,16 +25,10 @@ function validate(form) {
     errors.password = 'Password must be at least 8 characters.'
   }
 
-  if (!form.confirmPassword) {
-    errors.confirmPassword = 'Please confirm your password.'
-  } else if (form.confirmPassword !== form.password) {
-    errors.confirmPassword = 'Passwords do not match.'
-  }
-
   return errors
 }
 
-function SignUpPage() {
+function SignInPage() {
   const [form, setForm] = useState(initialForm)
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
@@ -53,8 +41,7 @@ function SignUpPage() {
   const showError = (field) => touched[field] || submitted
 
   const handleChange = (field) => (event) => {
-    const { value } = event.target
-    setForm((prev) => ({ ...prev, [field]: value }))
+    setForm((prev) => ({ ...prev, [field]: event.target.value }))
     setApiError('')
   }
 
@@ -71,14 +58,8 @@ function SignUpPage() {
     try {
       setIsSubmitting(true)
       setApiError('')
-
-      await signUp({
-        fullName: form.fullName,
-        email: form.email,
-        password: form.password,
-      })
-
-      console.log('Sign up success')
+      await signIn(form)
+      console.log('Sign in success')
     } catch (error) {
       setApiError(error.message)
     } finally {
@@ -90,30 +71,20 @@ function SignUpPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg-main px-4 py-10 font-jakarta">
       <div className="pointer-events-none absolute -left-12 top-6 h-44 w-44 rounded-full bg-primary-brand/50 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-10 -right-6 h-52 w-52 rounded-full bg-accent-soft/40 blur-3xl" />
+
       <AuthCard
-        title="Create your account"
-        subtitle="Start building and testing APIs with your workspace."
+        title="Welcome back"
+        subtitle="Sign in to continue managing and testing your APIs."
         footer={
           <p>
-            Already have an account?{' '}
-            <Link className="font-medium text-highlight hover:underline" to="/signin">
-              Sign in
+            New to GetMan?{' '}
+            <Link className="font-medium text-highlight hover:underline" to="/signup">
+              Create an account
             </Link>
           </p>
         }
       >
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-          <FormField
-            id="fullName"
-            label="Full Name"
-            value={form.fullName}
-            onChange={handleChange('fullName')}
-            onBlur={handleBlur('fullName')}
-            placeholder="Aman Sharma"
-            error={showError('fullName') ? errors.fullName : undefined}
-            autoComplete="name"
-          />
-
           <FormField
             id="email"
             type="email"
@@ -133,29 +104,28 @@ function SignUpPage() {
             value={form.password}
             onChange={handleChange('password')}
             onBlur={handleBlur('password')}
-            placeholder="At least 8 characters"
+            placeholder="Enter your password"
             error={showError('password') ? errors.password : undefined}
-            autoComplete="new-password"
+            autoComplete="current-password"
           />
 
-          <FormField
-            id="confirmPassword"
-            type="password"
-            label="Confirm Password"
-            value={form.confirmPassword}
-            onChange={handleChange('confirmPassword')}
-            onBlur={handleBlur('confirmPassword')}
-            placeholder="Retype your password"
-            error={
-              showError('confirmPassword') ? errors.confirmPassword : undefined
-            }
-            autoComplete="new-password"
-          />
+          <div className="flex items-center justify-between text-sm text-white/75">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/20 bg-white/5 text-primary-brand focus:ring-primary-brand/60"
+              />
+              <span>Remember me</span>
+            </label>
+            <a className="text-highlight hover:underline" href="/">
+              Forgot password?
+            </a>
+          </div>
 
           {apiError ? <p className="text-sm text-rose-300">{apiError}</p> : null}
 
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating...' : 'Create Account'}
+            {isSubmitting ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
       </AuthCard>
@@ -163,4 +133,4 @@ function SignUpPage() {
   )
 }
 
-export default SignUpPage
+export default SignInPage
