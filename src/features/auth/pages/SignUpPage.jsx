@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { signUp } from '../../../api/auth/signUpApi'
 import AuthCard from '../../../components/ui/AuthCard'
 import Button from '../../../components/ui/Button'
@@ -42,7 +42,7 @@ function SignUpPage() {
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [apiError, setApiError] = useState('')
-
+const navigate=useNavigate()
   const errors = useMemo(() => validate(form), [form])
   const hasErrors = Object.keys(errors).length > 0
 
@@ -68,11 +68,16 @@ function SignUpPage() {
       setIsSubmitting(true)
       setApiError('')
 
-      await signUp({
+      const res=await signUp({
         email: form.email,
         password: form.password,
         confirmPassword: form.confirmPassword,
       })
+      if(res.success){
+        // Redirect to sign-in page or dashboard after successful sign-up
+        navigate('/signin')
+      }
+
     } catch (error) {
       setApiError(error.message)
     } finally {
