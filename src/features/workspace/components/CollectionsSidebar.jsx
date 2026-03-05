@@ -6,6 +6,8 @@ function CollectionsSidebar({
   onSelectRequest,
   onAddCollection,
   onDeleteCollection,
+  onAddApi,
+  onDeleteApi,
   isLocked,
   onSignInSuggestion,
 }) {
@@ -45,13 +47,13 @@ function CollectionsSidebar({
     const childCollections = childrenMap.get(collection.id) || []
     const hasChildren = childCollections.length > 0
     const isExpanded = expandedIds.has(collection.id)
-    const paddingLeft = `${depth * 10 + 4}px`
+    // const paddingLeft = `${depth * 10 + 4}px`
 
     return (
       <section key={collection.id} className="space-y-2">
         <div
           className="rounded-md border border-white/10 bg-white/[0.03] p-2"
-          style={{ marginLeft: paddingLeft }}
+          
         >
           <div className="flex items-center justify-between gap-2">
             <button
@@ -61,7 +63,7 @@ function CollectionsSidebar({
               disabled={isLocked}
             >
               <span className="text-xs text-white/60">{isExpanded ? 'v' : '>'}</span>
-              <span className="text-sm font-semibold text-white">{collection.name}</span>
+              <span className="text-xs font-semibold text-white">{collection.name}</span>
             </button>
 
             <div className="flex items-center gap-1">
@@ -73,6 +75,15 @@ function CollectionsSidebar({
                 title="Create sub collection"
               >
                 + Sub
+              </button>
+              <button
+                type="button"
+                onClick={() => onAddApi(collection.id)}
+                disabled={isLocked}
+                className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Create API request"
+              >
+                + Api
               </button>
               <button
                 type="button"
@@ -97,21 +108,32 @@ function CollectionsSidebar({
                   const isActive = request.id === activeRequestId
                   return (
                     <li key={request.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelectRequest(request)}
-                        disabled={isLocked}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition ${
-                          isActive
-                            ? 'bg-primary-brand/25 text-white'
-                            : 'text-white/75 hover:bg-white/5'
-                        } disabled:cursor-not-allowed disabled:opacity-45`}
-                      >
-                        <span className="text-[11px] font-bold text-emerald-400">
-                          {request.method}
-                        </span>
-                        <span className="truncate">{request.name}</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onSelectRequest(request)}
+                          disabled={isLocked}
+                          className={`flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
+                            isActive
+                              ? 'bg-primary-brand/25 text-white'
+                              : 'text-white/75 hover:bg-white/5'
+                          } disabled:cursor-not-allowed disabled:opacity-45`}
+                        >
+                          <span className="text-[11px] font-bold text-emerald-400">
+                            {request.method}
+                          </span>
+                          <span className="truncate">{request.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteApi(collection.id, request.id)}
+                          disabled={isLocked}
+                          className="rounded-md border border-rose-400/35 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Delete API request"
+                        >
+                          Del
+                        </button>
+                      </div>
                     </li>
                   )
                 })}

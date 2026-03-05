@@ -1,21 +1,21 @@
 import { request } from '../auth/authClient'
 
 function getCollections({ workspaceId } = {}) {
-  return request('/api/collections', {
+  console.log(workspaceId)
+  return request(`/api/collection/all-collections/${workspaceId}`, {
     method: 'GET',
-    params: workspaceId ? { workspaceId } : undefined,
   })
 }
 
 function createCollection(payload) {
-  return request('/api/collections', {
+  return request('/api/collection/create-collection', {
     method: 'POST',
     data: payload,
   })
 }
 
 function deleteCollection(collectionId) {
-  return request(`/api/collections/${collectionId}`, {
+  return request(`/api/collection/delete-collection/${collectionId}`, {
     method: 'DELETE',
   })
 }

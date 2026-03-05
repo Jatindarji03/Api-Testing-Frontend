@@ -13,6 +13,98 @@ import { useUser } from '../../../context/useUser'
 import { getWorkspaces } from '../../../api/workspace/workspaceApi'
 import { getCollections } from '../../../api/workspace/collectionApi'
 import { getApis } from '../../../api/workspace/apiApi'
+import { getDefaultRequestHeaders } from '../utils/workspaceDataHelpers'
+
+const DEFAULT_RESPONSE_TEXT = 'Send a request to view the response.'
+const DEFAULT_RESPONSE_META = {
+  statusLabel: 'Ready',
+  durationLabel: '--',
+  sizeLabel: '--',
+}
+const IMPORTANT_RESPONSE_HEADER_KEYS = [
+  'content-type',
+  'content-length',
+  'date',
+  'server',
+  'cache-control',
+  'etag',
+]
+const DEFAULT_RESPONSE_HEADERS = IMPORTANT_RESPONSE_HEADER_KEYS.map((key) => ({
+  key,
+  value: '--',
+}))
+const createGuestRequest = () => ({
+  id: 'guest-request',
+  name: 'Quick Request',
+  method: 'GET',
+  url: '',
+  apiUrl: '',
+  headers: getDefaultRequestHeaders(),
+  header: getDefaultRequestHeaders(),
+  params: [{ key: '', value: '', enabled: true }],
+  bodyType: 'none',
+  body: '',
+  authType: 'none',
+  authToken: '',
+  authUsername: '',
+  authPassword: '',
+  preRequestScript: '',
+  postResponseScript: '',
+  vars: [{ key: 'baseUrl', value: '', enabled: true }],
+  variables: [{ key: 'baseUrl', value: '', enabled: true }],
+  envVariable: [{ key: 'baseUrl', value: '', enabled: true }],
+})
+
+function buildRequestUrl(rawUrl, params = []) {
+  if (!rawUrl) return ''
+
+  const isAbsolute = /^https?:\/\//i.test(rawUrl)
+  const base = isAbsolute ? undefined : window.location.origin
+  const url = new URL(rawUrl, base)
+
+  params.forEach((param) => {
+    const key = param?.name || param?.key
+    const value = param?.value
+    const enabled = param?.enabled ?? true
+    if (!enabled || !key) return
+    url.searchParams.set(key, value ?? '')
+  })
+
+  return url.toString()
+}
+
+function formatBody(body) {
+  if (body == null || body === '') return undefined
+  if (typeof body === 'string') return body
+  try {
+    return JSON.stringify(body)
+  } catch {
+    return undefined
+  }
+}
+
+function parseBodyText(bodyText) {
+  if (!bodyText) return ''
+  try {
+    return JSON.stringify(JSON.parse(bodyText), null, 2)
+  } catch {
+    return bodyText
+  }
+}
+
+function formatBytes(byteLength) {
+  if (!Number.isFinite(byteLength) || byteLength < 0) return '--'
+  if (byteLength < 1024) return `${byteLength}B`
+  if (byteLength < 1024 * 1024) return `${(byteLength / 1024).toFixed(2)}KB`
+  return `${(byteLength / (1024 * 1024)).toFixed(2)}MB`
+}
+
+function extractImportantResponseHeaders(response) {
+  return IMPORTANT_RESPONSE_HEADER_KEYS.map((key) => ({
+    key,
+    value: response.headers.get(key) || '--',
+  }))
+}
 
 function extractList(payload, keys = []) {
   if (Array.isArray(payload)) return payload
@@ -68,6 +160,33 @@ function ApiWorkspacePage() {
   const [seedCollections, setSeedCollections] = useState([])
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const [responseText, setResponseText] = useState(DEFAULT_RESPONSE_TEXT)
+  const [responseMeta, setResponseMeta] = useState(DEFAULT_RESPONSE_META)
+  const [responseHeaders, setResponseHeaders] = useState(DEFAULT_RESPONSE_HEADERS)
+  const [isSendingRequest, setIsSendingRequest] = useState(false)
+  const [guestRequest, setGuestRequest] = useState(createGuestRequest)
+  const {
+    workspaceList,
+    selectedWorkspace,
+    setSelectedWorkspace,
+    workspaceCollections,
+    modalState,
+    isCreatingCollection,
+    openModal,
+    closeModal,
+    setModalField,
+    createEntity,
+    deleteWorkspace,
+    deleteCollection,
+    deleteApi,
+    updateWorkspaceName,
+  } = useWorkspaceState({
+    seedWorkspaces,
+    seedCollections,
+    defaultWorkspaceId: '',
+    userId,
+    isLocked,
+  })
 
   useEffect(() => {
     let isCancelled = false
@@ -84,15 +203,26 @@ function ApiWorkspacePage() {
         setIsLoadingData(true)
         setLoadError('')
 
-        const [workspacesResponse, collectionsResponse, apisResponse] = await Promise.all([
-          getWorkspaces({ userId: userId || undefined }),
-          getCollections(),
-          getApis(),
-        ])
+        const workspacesResponse = await getWorkspaces({
+          userId: userId || undefined,
+        })
+
+        const workspaces = extractList(workspacesResponse, ['workspaces', 'projects'])
+        const effectiveWorkspaceId =
+          selectedWorkspace ||
+          workspaces[0]?.id ||
+          workspaces[0]?._id ||
+          ''
+
+        const [collectionsResponse, apisResponse] = effectiveWorkspaceId
+          ? await Promise.all([
+              getCollections({ workspaceId: effectiveWorkspaceId }),
+              getApis({ workspaceId: effectiveWorkspaceId }),
+            ])
+          : [[], []]
 
         if (isCancelled) return
 
-        const workspaces = extractList(workspacesResponse, ['workspaces', 'projects'])
         const collections = extractList(collectionsResponse, ['collections'])
         const apis = extractList(apisResponse, ['apis', 'requests'])
         const collectionsWithApis = mergeApisIntoCollections(collections, apis)
@@ -114,32 +244,12 @@ function ApiWorkspacePage() {
     return () => {
       isCancelled = true
     }
-  }, [isLocked, userId])
-
-  const {
-    workspaceList,
-    selectedWorkspace,
-    setSelectedWorkspace,
-    workspaceCollections,
-    modalState,
-    isCreatingCollection,
-    openModal,
-    closeModal,
-    setModalField,
-    createEntity,
-    deleteWorkspace,
-    deleteCollection,
-  } = useWorkspaceState({
-    seedWorkspaces,
-    seedCollections,
-    defaultWorkspaceId: '',
-    userId,
-    isLocked,
-  })
+  }, [isLocked, userId, selectedWorkspace])
 
   const {
     activeRequest,
     setActiveRequest,
+    updateActiveRequest,
     openRequestTabs,
     activeRequestTab,
     setActiveRequestTab,
@@ -163,6 +273,105 @@ function ApiWorkspacePage() {
   const handleSubmitModal = async (event) => {
     event.preventDefault()
     await createEntity()
+  }
+
+  const handleRequestChange = (updater) => {
+    if (!activeRequest) {
+      setGuestRequest((current) => {
+        if (!current) return current
+        if (typeof updater === 'function') return updater(current)
+        return {
+          ...current,
+          ...updater,
+        }
+      })
+      return
+    }
+
+    updateActiveRequest((current) => {
+      if (!current) return current
+      if (typeof updater === 'function') return updater(current)
+      return {
+        ...current,
+        ...updater,
+      }
+    })
+  }
+
+  const handleSendRequest = async () => {
+    const requestData = activeRequest || guestRequest
+    if (!requestData || isSendingRequest) return
+
+    const method = (requestData.method || 'GET').toUpperCase()
+    const requestUrl = buildRequestUrl(
+      requestData.url || requestData.apiUrl || '',
+      requestData.params || []
+    )
+
+    if (!requestUrl) {
+      setResponseMeta({
+        statusLabel: 'Error',
+        durationLabel: '--',
+        sizeLabel: '--',
+      })
+      setResponseText('Request URL is missing.')
+      setResponseHeaders(DEFAULT_RESPONSE_HEADERS)
+      return
+    }
+
+    const headerEntries = requestData.headers || requestData.header || []
+    const body = method !== 'GET' && method !== 'HEAD' ? formatBody(requestData.body) : undefined
+    const hasBody = body !== undefined
+    const headers = {}
+
+    headerEntries.forEach((item) => {
+      const key = item?.name || item?.key
+      const enabled = item?.enabled ?? true
+      if (!enabled || !key) return
+      const normalizedKey = String(key).toLowerCase()
+
+      // Avoid unnecessary CORS preflight on body-less requests.
+      if (!hasBody && normalizedKey === 'content-type') return
+
+      headers[key] = item?.value ?? ''
+    })
+
+    const requestInit = {
+      method,
+      headers,
+    }
+
+    if (hasBody) {
+      requestInit.body = body
+    }
+
+    const startedAt = performance.now()
+    setIsSendingRequest(true)
+
+    try {
+      const response = await fetch(requestUrl, requestInit)
+      const text = await response.text()
+      const durationMs = performance.now() - startedAt
+      const size = new TextEncoder().encode(text).length
+
+      setResponseMeta({
+        statusLabel: `${response.status} ${response.statusText}`.trim(),
+        durationLabel: `${Math.round(durationMs)}ms`,
+        sizeLabel: formatBytes(size),
+      })
+      setResponseHeaders(extractImportantResponseHeaders(response))
+      setResponseText(parseBodyText(text))
+    } catch (error) {
+      setResponseMeta({
+        statusLabel: 'Network Error',
+        durationLabel: '--',
+        sizeLabel: '--',
+      })
+      setResponseHeaders(DEFAULT_RESPONSE_HEADERS)
+      setResponseText(error.message || 'Failed to send request.')
+    } finally {
+      setIsSendingRequest(false)
+    }
   }
 
   const workspaceContent = (
@@ -200,31 +409,36 @@ function ApiWorkspacePage() {
             </div>
           )
         })}
+        {!openRequestTabs.length ? (
+          <div className="flex shrink-0 items-center rounded-md border border-primary-brand/50 bg-primary-brand/20 px-2 py-1.5 text-sm text-white">
+            <span className="mr-2 text-xs font-bold text-emerald-400">
+              {(guestRequest.method || 'GET').toUpperCase()}
+            </span>
+            <span>{guestRequest.name || 'Quick Request'}</span>
+          </div>
+        ) : null}
       </div>
 
-      {activeRequest ? (
-        <div className="grid h-[calc(100%-46px)] grid-cols-1 gap-3 xl:grid-cols-2">
-          <RequestPanel
-            request={activeRequest}
-            requestTabs={requestTabs}
-            activeRequestTab={activeRequestTab}
-            onRequestTabChange={setActiveRequestTab}
-            queryParams={activeRequest?.params || []}
-          />
-          <ResponsePanel
-            responseTabs={responseTabs}
-            activeResponseTab={activeResponseTab}
-            onResponseTabChange={setActiveResponseTab}
-            responseText=""
-          />
-        </div>
-      ) : (
-        <div className="grid h-[calc(100%-46px)] place-items-center rounded-xl border border-white/10 bg-[#0b1120] p-6 text-center">
-          <p className="text-sm text-white/70">
-            No requests available in this workspace yet.
-          </p>
-        </div>
-      )}
+      <div className="grid h-[calc(100%-46px)] grid-cols-1 gap-3 xl:grid-cols-2">
+        <RequestPanel
+          request={activeRequest || guestRequest}
+          requestTabs={requestTabs}
+          activeRequestTab={activeRequestTab}
+          onRequestTabChange={setActiveRequestTab}
+          onRequestChange={handleRequestChange}
+          onSendRequest={handleSendRequest}
+          isSending={isSendingRequest}
+        />
+        <ResponsePanel
+          responseTabs={responseTabs}
+          activeResponseTab={activeResponseTab}
+          onResponseTabChange={setActiveResponseTab}
+          responseText={responseText}
+          responseMeta={responseMeta}
+          responseHeaders={responseHeaders}
+          isSending={isSendingRequest}
+        />
+      </div>
     </div>
   )
 
@@ -234,6 +448,7 @@ function ApiWorkspacePage() {
         workspaces={workspaceList}
         selectedWorkspace={selectedWorkspace}
         onWorkspaceChange={setSelectedWorkspace}
+        onWorkspaceRename={updateWorkspaceName}
         onAddWorkspace={() => openModal('workspace')}
         onDeleteWorkspace={deleteWorkspace}
         onLogout={handleLogout}
@@ -249,6 +464,8 @@ function ApiWorkspacePage() {
           onAddCollection={(parentCollectionId) =>
             openModal('collection', parentCollectionId)
           }
+          onAddApi={(collectionId) => openModal('api', collectionId)}
+          onDeleteApi={deleteApi}
           onDeleteCollection={deleteCollection}
           isLocked={isLocked}
           onSignInSuggestion={handleSignInSuggestion}

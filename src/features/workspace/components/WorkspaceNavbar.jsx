@@ -1,13 +1,37 @@
+import { useEffect, useState } from 'react'
+
 function WorkspaceNavbar({
   workspaces,
   selectedWorkspace,
   onWorkspaceChange,
+  onWorkspaceRename,
   onAddWorkspace,
   onDeleteWorkspace,
   onLogout,
   isLocked,
   onSignInSuggestion,
 }) {
+  const selectedWorkspaceData =
+    workspaces.find((workspace) => workspace.id === selectedWorkspace) || null
+  const [workspaceNameDraft, setWorkspaceNameDraft] = useState('')
+  const [isRenaming, setIsRenaming] = useState(false)
+
+  useEffect(() => {
+    setWorkspaceNameDraft(selectedWorkspaceData?.name || '')
+  }, [selectedWorkspaceData?.name, selectedWorkspace])
+
+  const handleRename = async () => {
+    const nextName = workspaceNameDraft.trim()
+    if (!nextName || !selectedWorkspaceData) return
+    if (nextName === selectedWorkspaceData.name) return
+    setIsRenaming(true)
+    try {
+      await onWorkspaceRename(nextName)
+    } finally {
+      setIsRenaming(false)
+    }
+  }
+
   return (
     <header className="relative flex h-14 items-center justify-between border-b border-white/10 bg-[#0a0f1f]/80 px-4 backdrop-blur-md">
       <div className="flex items-center gap-3">
@@ -35,6 +59,29 @@ function WorkspaceNavbar({
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 text-sm text-white/80">
+          <span className="text-white/60">Project</span>
+          <input
+            value={workspaceNameDraft}
+            onChange={(event) => setWorkspaceNameDraft(event.target.value)}
+            disabled={isLocked || !selectedWorkspaceData || isRenaming}
+            className="w-44 rounded-md border border-white/15 bg-[#0d1428] px-2 py-1.5 text-sm text-white outline-none focus:border-highlight/70 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleRename}
+          disabled={
+            isLocked ||
+            !selectedWorkspaceData ||
+            isRenaming ||
+            !workspaceNameDraft.trim() ||
+            workspaceNameDraft.trim() === selectedWorkspaceData.name
+          }
+          className="rounded-md border border-sky-400/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isRenaming ? 'Saving...' : 'Save Name'}
+        </button>
         <button
           type="button"
           onClick={onAddWorkspace}

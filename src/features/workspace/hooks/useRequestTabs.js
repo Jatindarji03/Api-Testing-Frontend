@@ -62,9 +62,40 @@ function useRequestTabs({
     })
   }
 
+  const updateActiveRequest = (updater) => {
+    setActiveRequest((previous) => {
+      const sourceRequest = previous || activeRequest
+      if (!sourceRequest) return sourceRequest
+
+      const next =
+        typeof updater === 'function'
+          ? updater(sourceRequest)
+          : {
+              ...sourceRequest,
+              ...updater,
+            }
+
+      if (!next?.id) return next
+
+      setOpenRequestTabs((previousTabs) =>
+        previousTabs.map((tab) =>
+          tab.id === next.id
+            ? {
+                ...tab,
+                ...next,
+              }
+            : tab
+        )
+      )
+
+      return next
+    })
+  }
+
   return {
     activeRequest,
     setActiveRequest,
+    updateActiveRequest,
     openRequestTabs,
     activeRequestTab,
     setActiveRequestTab,
