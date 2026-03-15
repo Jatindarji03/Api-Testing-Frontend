@@ -1,6 +1,7 @@
 import { request } from '../auth/authClient'
 
-const USE_DUMMY_API_RESPONSES = true
+const USE_DUMMY_API_RESPONSES =
+  (import.meta.env.VITE_USE_DUMMY_API_RESPONSES ?? 'false') === 'true'
 
 const DUMMY_APIS = [
   {
@@ -44,10 +45,8 @@ const DUMMY_APIS = [
   },
 ]
 
-function getApis({ collectionId, workspaceId } = {}) {
-  const path = workspaceId
-    ? `/api/api/all-apis/${workspaceId}`
-    : '/api/api/all-apis'
+function getApis({ collectionId } = {}) {
+  const path = `/api/request/collection/get-request/${collectionId}`
 
   if (USE_DUMMY_API_RESPONSES) {
     const apis = DUMMY_APIS.filter((apiItem) => {
@@ -59,36 +58,56 @@ function getApis({ collectionId, workspaceId } = {}) {
       success: true,
       message: 'Dummy getApis response from apiApi.js',
       apis,
+    }) 
+  }
+
+  return request(path, {
+    method: 'GET',
+    
+  })
+}
+
+function getRequestById({ requestId } = {}) {
+  const targetId = requestId
+  if (!targetId) {
+    return Promise.reject(new Error('requestId is required'))
+  }
+
+  const path = `/api/request/get-request/${targetId}`
+
+  if (USE_DUMMY_API_RESPONSES) {
+    const matchedApi = DUMMY_APIS.find((apiItem) => apiItem._id === targetId)
+    return Promise.resolve({
+      success: true,
+      message: 'Dummy getRequestById response from apiApi.js',
+      request: matchedApi,
     })
   }
 
   return request(path, {
     method: 'GET',
-    params: {
-      ...(collectionId ? { collectionId } : {}),
-      ...(workspaceId ? { workspaceId } : {}),
-    },
   })
 }
 
 function createApi(payload) {
-  if (USE_DUMMY_API_RESPONSES) {
-    const generatedId = `api-${Date.now()}`
+  const generatedId = `api-${Date.now()}`
     const nowIso = new Date().toISOString()
-
+    console.log(payload)
     const api = {
       _id: generatedId,
-      collectionid: payload?.collectionId || payload?.collectionid || '',
+      collectionId: payload?.collectionId || payload?.collectionid || '',
       apiName: payload?.apiName || payload?.name || 'Untitled API',
       apiUrl: payload?.apiUrl || payload?.url || '',
       method: (payload?.method || 'GET').toUpperCase(),
       params: payload?.params || [],
       header: payload?.header || payload?.headers || [],
       body: payload?.body ?? '',
-      bodyType: payload?.bodyType || 'raw',
+      bodyType: payload?.bodyType ?? 'json',
       createdAt: nowIso,
     }
 
+  if (USE_DUMMY_API_RESPONSES) {
+    
     return Promise.resolve({
       success: true,
       message: 'Dummy createApi response from apiApi.js',
@@ -96,9 +115,9 @@ function createApi(payload) {
     })
   }
 
-  return request('/api/api/create-api', {
+  return request('api/request/save-request', {
     method: 'POST',
-    data: payload,
+    data: api,
   })
 }
 
@@ -118,4 +137,33 @@ function deleteApi(apiId) {
   })
 }
 
-export { createApi, deleteApi, getApis }
+function updateApi(apiId, payload) {
+  if (USE_DUMMY_API_RESPONSES) {
+    const targetIndex = DUMMY_APIS.findIndex((apiItem) => apiItem._id === apiId)
+
+    const updatedApi = {
+      _id: apiId,
+      ...(targetIndex >= 0 ? DUMMY_APIS[targetIndex] : {}),
+      ...payload,
+    }
+
+    if (targetIndex >= 0) {
+      DUMMY_APIS[targetIndex] = updatedApi
+    } else {
+      DUMMY_APIS.push(updatedApi)
+    }
+
+    return Promise.resolve({
+      success: true,
+      message: 'Dummy updateApi response from apiApi.js',
+      api: updatedApi,
+    })
+  }
+
+  return request(`/api/request/update-request/${apiId}`, {
+    method: 'PATCH',
+    data: payload,
+  })
+}
+
+export { createApi, deleteApi, getApis, getRequestById, updateApi }

@@ -4,6 +4,7 @@ function CollectionsSidebar({
   collections,
   activeRequestId,
   onSelectRequest,
+  onCollectionToggle,
   onAddCollection,
   onDeleteCollection,
   onAddApi,
@@ -32,15 +33,18 @@ function CollectionsSidebar({
   }, [collections])
 
   const toggleCollection = (collectionId) => {
+    let shouldFetch = false
     setExpandedIds((prev) => {
       const next = new Set(prev)
       if (next.has(collectionId)) {
         next.delete(collectionId)
       } else {
         next.add(collectionId)
+        shouldFetch = true
       }
       return next
     })
+    return shouldFetch
   }
 
   const renderCollectionNode = (collection, depth = 0) => {
@@ -58,7 +62,12 @@ function CollectionsSidebar({
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => toggleCollection(collection.id)}
+              onClick={() => {
+                const shouldFetch = toggleCollection(collection.id)
+                if (shouldFetch) {
+                  onCollectionToggle?.(collection.id)
+                }
+              }}
               className="flex flex-1 items-center gap-2 text-left"
               disabled={isLocked}
             >
