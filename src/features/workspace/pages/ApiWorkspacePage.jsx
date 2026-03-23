@@ -272,6 +272,8 @@ function ApiWorkspacePage() {
     enabled: !isLocked,
     queryFn: () => getWorkspaces({ userId: userId || undefined }),
     select: (payload) => extractList(payload, ['workspaces', 'projects']),
+    staleTime:4*60*1000,
+    refetchOnWindowFocus:false
   })
   const queriedWorkspaces = useMemo(
     () => (isLocked ? [] : workspaceListQuery.data || []),
@@ -286,13 +288,26 @@ function ApiWorkspacePage() {
     queryKey: ['workspace-collections', effectiveWorkspaceId],
     enabled: !isLocked && Boolean(effectiveWorkspaceId),
     queryFn: async () => {
-      const [collectionsResponse, apisResponse] = await Promise.all([
-        getCollections({ workspaceId: effectiveWorkspaceId }),
-        getApis({ workspaceId: effectiveWorkspaceId }).catch(() => []),
-      ])
-
+      const collectionsResponse = await getCollections({
+        workspaceId: effectiveWorkspaceId,
+      })
       const collections = extractList(collectionsResponse, ['collections'])
-      const apis = extractList(apisResponse, ['apis', 'requests', 'request'])
+      const collectionIds = collections
+        .map((collection) => collection.id || collection._id)
+        .filter(Boolean)
+
+      const apisByCollection = await Promise.all(
+        collectionIds.map(async (collectionId) => {
+          try {
+            const apisResponse = await getApis({ collectionId })
+            return extractList(apisResponse, ['apis', 'requests', 'request'])
+          } catch {
+            return []
+          }
+        })
+      )
+
+      const apis = apisByCollection.flat()
       return mergeApisIntoCollections(collections, apis)
     },
   })

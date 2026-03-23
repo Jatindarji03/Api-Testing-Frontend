@@ -106,9 +106,12 @@ function resolveCollectionId(responseData) {
 }
 
 function resolveApiId(responseData) {
+  const requestPayload = responseData?.request || responseData?.data?.request
   return (
     responseData?.api?.id ??
     responseData?.api?._id ??
+    requestPayload?.id ??
+    requestPayload?._id ??
     responseData?.data?.api?.id ??
     responseData?.data?.api?._id ??
     responseData?.id ??

@@ -132,7 +132,7 @@ function deleteApi(apiId) {
     })
   }
 
-  return request(`/api/api/delete-api/${apiId}`, {
+  return request(`/api/request/delete-request/${apiId}`, {
     method: 'DELETE',
   })
 }
