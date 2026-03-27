@@ -45,6 +45,12 @@ const createGuestRequest = () => ({
   params: [{ key: '', value: '', enabled: true }],
   bodyType: 'none',
   body: '',
+  bodyFormData: [],
+  formData: [],
+  bodyUrlEncoded: [],
+  urlEncoded: [],
+  formParams: [],
+  formUrlEncoded: [],
   authType: 'none',
   authToken: '',
   authUsername: '',
@@ -99,7 +105,81 @@ function normalizeKeyValueRows(rows = []) {
     key: item?.key || item?.name || '',
     value: item?.value ?? '',
     enabled: item?.enabled ?? true,
+    type: item?.type === 'file' ? 'file' : 'text',
+    fileName: item?.fileName || item?.file?.name || '',
+    file: item?.file || null,
   }))
+}
+
+function getActiveKeyValueRows(rows = []) {
+  return normalizeKeyValueRows(rows).filter(
+    (row) => (row.enabled ?? true) && Boolean(row.key)
+  )
+}
+
+function sanitizeFormDataRows(rows = []) {
+  return rows.map((row) => {
+    const type = row?.type === 'file' ? 'file' : 'text'
+    const value =
+      type === 'file'
+        ? row?.fileName || row?.value || ''
+        : row?.value ?? ''
+    const sanitized = {
+      key: row?.key || '',
+      value,
+      enabled: row?.enabled ?? true,
+      type,
+    }
+    if (type === 'file' && (row?.fileName || row?.value)) {
+      sanitized.fileName = row?.fileName || row?.value
+    }
+    return sanitized
+  })
+}
+
+function buildRequestBody(requestData) {
+  if (!requestData) return undefined
+  const type = (requestData.bodyType || 'none').toLowerCase()
+  if (type === 'none') return undefined
+
+  if (type === 'form-data') {
+    const rows = getActiveKeyValueRows(
+      requestData.bodyFormData ||
+        requestData.formData ||
+        requestData.formdata ||
+        []
+    )
+    if (!rows.length) return undefined
+    const formData = new FormData()
+    rows.forEach(({ key, value, type, file, fileName }) => {
+      if (type === 'file') {
+        const payloadValue =
+          file instanceof File ? file : fileName || value || ''
+        formData.append(key, payloadValue)
+        return
+      }
+      formData.append(key, value ?? '')
+    })
+    return formData
+  }
+
+  if (type === 'x-www-form-urlencoded') {
+    const rows = getActiveKeyValueRows(
+      requestData.bodyUrlEncoded ||
+        requestData.urlEncoded ||
+        requestData.formParams ||
+        requestData.formUrlEncoded ||
+        []
+    )
+    if (!rows.length) return undefined
+    const params = new URLSearchParams()
+    rows.forEach(({ key, value }) => {
+      params.append(key, value ?? '')
+    })
+    return params.toString()
+  }
+
+  return formatBody(requestData.body)
 }
 
 function normalizeRequestItem(apiItem) {
@@ -115,6 +195,18 @@ function normalizeRequestItem(apiItem) {
     vars.length > 0
       ? vars
       : [{ key: 'baseUrl', value: '', enabled: true }]
+  const formDataRows = sanitizeFormDataRows(
+    normalizeKeyValueRows(
+      apiItem.bodyFormData || apiItem.formData || apiItem.formdata || []
+    )
+  )
+  const urlEncodedRows = normalizeKeyValueRows(
+    apiItem.bodyUrlEncoded ||
+      apiItem.urlEncoded ||
+      apiItem.formParams ||
+      apiItem.formUrlEncoded ||
+      []
+  )
 
   return {
     ...apiItem,
@@ -130,6 +222,14 @@ function normalizeRequestItem(apiItem) {
     params,
     bodyType: apiItem.bodyType || 'none',
     body: apiItem.body ?? '',
+    bodyFormData: formDataRows,
+    formData: formDataRows,
+    formdata: formDataRows,
+    bodyUrlEncoded: urlEncodedRows,
+    urlEncoded: urlEncodedRows,
+    urlencoded: urlEncodedRows,
+    formParams: urlEncodedRows,
+    formUrlEncoded: urlEncodedRows,
     authType: apiItem.authType || apiItem.auth?.type || 'none',
     authToken: apiItem.authToken || apiItem.auth?.token || '',
     authUsername: apiItem.authUsername || apiItem.auth?.username || '',
@@ -230,6 +330,11 @@ function mergeApisIntoCollections(rawCollections, rawApis) {
 }
 
 function ApiWorkspacePage() {
+  const truncateRequestName = (name) => {
+    if (!name) return ''
+    return name.length > 12 ? `${name.slice(0, 12)}…` : name
+  }
+
   const navigate = useNavigate()
   const { userId, setUser } = useUser()
   const isLocked = !isAuthenticated()
@@ -406,6 +511,61 @@ function ApiWorkspacePage() {
     }
   }, [])
 
+  const findCollectionById = useCallback(
+    (id) =>
+      workspaceCollections.find(
+        (collection) => collection.id === id || collection._id === id
+      ),
+    [workspaceCollections]
+  )
+
+  const handleDeleteCollection = useCallback(
+    async (collectionId) => {
+      if (!collectionId) return
+      const confirmed = window.confirm('Are you sure?')
+      if (!confirmed) return
+      const collection = findCollectionById(collectionId)
+      await deleteCollection(collectionId)
+      showSaveNotice(`${collection?.name || 'Collection'} deleted.`, 'success')
+    },
+    [deleteCollection, findCollectionById, showSaveNotice]
+  )
+
+  const findApiById = useCallback(
+    (collectionId, apiId) => {
+      if (!collectionId || !apiId) return null
+      const collection = findCollectionById(collectionId)
+      if (!collection) return null
+      return (collection.api || []).find(
+        (apiItem) => apiItem.id === apiId || apiItem._id === apiId
+      )
+    },
+    [findCollectionById]
+  )
+
+  const handleDeleteApi = useCallback(
+    async (collectionId, apiId) => {
+      if (!collectionId || !apiId) return
+      const confirmed = window.confirm('Are you sure?')
+      if (!confirmed) return
+      const apiItem = findApiById(collectionId, apiId)
+      await deleteApi(collectionId, apiId)
+      showSaveNotice(`${apiItem?.name || 'API request'} deleted.`, 'success')
+    },
+    [deleteApi, findApiById, showSaveNotice]
+  )
+
+  const handleDeleteWorkspace = useCallback(async () => {
+    if (!selectedWorkspace) return
+    const confirmed = window.confirm('Are you sure?')
+    if (!confirmed) return
+    const workspace = workspaceList.find(
+      (workspaceItem) => workspaceItem.id === selectedWorkspace
+    )
+    await deleteWorkspace()
+    showSaveNotice(`${workspace?.name || 'Workspace'} deleted.`, 'success')
+  }, [deleteWorkspace, selectedWorkspace, showSaveNotice, workspaceList])
+
   const handleSaveActiveRequest = useCallback(async () => {
     if (isLocked) {
       showSaveNotice('Sign in to save API requests.', 'error')
@@ -427,15 +587,25 @@ function ApiWorkspacePage() {
 
     if (isSavingRequest) return
 
-    const headers = normalizeKeyValueRows(requestData.headers || requestData.header || [])
-    const params = normalizeKeyValueRows(requestData.params || [])
-    const vars = normalizeKeyValueRows(
-      requestData.vars || requestData.variables || requestData.envVariable || []
-    )
+  const headers = normalizeKeyValueRows(requestData.headers || requestData.header || [])
+  const params = normalizeKeyValueRows(requestData.params || [])
+  const vars = normalizeKeyValueRows(
+    requestData.vars || requestData.variables || requestData.envVariable || []
+  )
     const apiUrl = requestData.url || requestData.apiUrl || ''
     const collectionId = requestData.collectionId || requestData.collectionid || ''
     const workspaceId =
       selectedWorkspace || requestData.workspaceId || requestData.projectId || ''
+    const savedFormDataRows =
+      requestData.bodyFormData || requestData.formData || requestData.formdata || []
+    const savedUrlEncodedRows =
+      requestData.bodyUrlEncoded ||
+      requestData.urlEncoded ||
+      requestData.formParams ||
+      requestData.formUrlEncoded ||
+      requestData.urlencoded ||
+      []
+    const persistedFormDataRows = sanitizeFormDataRows(savedFormDataRows)
 
     const payload = {
       name: requestData.name || requestData.apiName || 'Untitled API',
@@ -452,6 +622,14 @@ function ApiWorkspacePage() {
       headers,
       bodyType: requestData.bodyType || 'none',
       body: requestData.body ?? '',
+      bodyFormData: persistedFormDataRows,
+      formData: persistedFormDataRows,
+      formdata: persistedFormDataRows,
+      bodyUrlEncoded: savedUrlEncodedRows,
+      urlEncoded: savedUrlEncodedRows,
+      urlencoded: savedUrlEncodedRows,
+      formParams: savedUrlEncodedRows,
+      formUrlEncoded: savedUrlEncodedRows,
       authType: requestData.authType || requestData.auth?.type || 'none',
       authToken: requestData.authToken || requestData.auth?.token || '',
       authUsername: requestData.authUsername || requestData.auth?.username || '',
@@ -496,6 +674,14 @@ function ApiWorkspacePage() {
         envVariable: vars,
         bodyType: requestData.bodyType || 'none',
         body: requestData.body ?? '',
+        bodyFormData: persistedFormDataRows,
+        formData: persistedFormDataRows,
+        formdata: persistedFormDataRows,
+        bodyUrlEncoded: savedUrlEncodedRows,
+        urlEncoded: savedUrlEncodedRows,
+        urlencoded: savedUrlEncodedRows,
+        formParams: savedUrlEncodedRows,
+        formUrlEncoded: savedUrlEncodedRows,
         authType: requestData.authType || requestData.auth?.type || 'none',
         authToken: requestData.authToken || requestData.auth?.token || '',
         authUsername: requestData.authUsername || requestData.auth?.username || '',
@@ -701,7 +887,11 @@ function ApiWorkspacePage() {
     }
 
     const headerEntries = requestData.headers || requestData.header || []
-    const body = method !== 'GET' && method !== 'HEAD' ? formatBody(requestData.body) : undefined
+    const normalizedBodyType = (requestData.bodyType || 'none').toLowerCase()
+    const body =
+      method !== 'GET' && method !== 'HEAD'
+        ? buildRequestBody(requestData)
+        : undefined
     const hasBody = body !== undefined
     const headers = {}
 
@@ -716,6 +906,42 @@ function ApiWorkspacePage() {
 
       headers[key] = item?.value ?? ''
     })
+
+    if (hasBody) {
+      const contentTypeKey = Object.keys(headers).find(
+        (headerKey) => headerKey.toLowerCase() === 'content-type'
+      )
+
+      if (normalizedBodyType === 'form-data') {
+        if (contentTypeKey) {
+          delete headers[contentTypeKey]
+        }
+      }
+
+      if (normalizedBodyType === 'x-www-form-urlencoded') {
+        const encodedHeader =
+          'application/x-www-form-urlencoded;charset=UTF-8'
+        if (contentTypeKey) {
+          headers[contentTypeKey] = encodedHeader
+        } else {
+          headers['Content-Type'] = encodedHeader
+        }
+      }
+    }
+    console.groupCollapsed('Outgoing API request')
+    console.log('URL', requestUrl)
+    console.log('Method', method)
+    console.log('Headers', headers)
+    console.log('Body type', normalizedBodyType)
+    if (typeof body === 'string') {
+      console.log('Request payload', body)
+    } else if (body instanceof FormData) {
+      console.log('Request FormData entries:')
+      for (const entry of body.entries()) {
+        console.log(entry[0], entry[1])
+      }
+    }
+    console.groupEnd()
 
     const requestInit = {
       method,
@@ -778,7 +1004,7 @@ function ApiWorkspacePage() {
                 <span className="mr-2 text-xs font-bold text-emerald-400">
                   {request.method}
                 </span>
-                <span>{request.name}</span>
+                <span>{truncateRequestName(request.name)}</span>
                 {isDirty ? (
                   <span
                     className="ml-2 inline-block h-2 w-2 rounded-full bg-white"
@@ -803,7 +1029,9 @@ function ApiWorkspacePage() {
             <span className="mr-2 text-xs font-bold text-emerald-400">
               {(guestRequest.method || 'GET').toUpperCase()}
             </span>
-            <span>{guestRequest.name || 'Quick Request'}</span>
+            <span>
+              {truncateRequestName(guestRequest.name) || 'Quick Request'}
+            </span>
           </div>
         ) : null}
       </div>
@@ -839,7 +1067,7 @@ function ApiWorkspacePage() {
         onWorkspaceChange={setSelectedWorkspace}
         onWorkspaceRename={updateWorkspaceName}
         onAddWorkspace={() => openModal('workspace')}
-        onDeleteWorkspace={deleteWorkspace}
+        onDeleteWorkspace={handleDeleteWorkspace}
         onLogout={handleLogout}
         isLocked={isLocked}
         onSignInSuggestion={handleSignInSuggestion}
@@ -855,8 +1083,8 @@ function ApiWorkspacePage() {
             openModal('collection', parentCollectionId)
           }
           onAddApi={(collectionId) => openModal('api', collectionId)}
-          onDeleteApi={deleteApi}
-          onDeleteCollection={deleteCollection}
+        onDeleteApi={handleDeleteApi}
+        onDeleteCollection={handleDeleteCollection}
           isLocked={isLocked}
           onSignInSuggestion={handleSignInSuggestion}
         />

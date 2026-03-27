@@ -13,6 +13,10 @@ function CollectionsSidebar({
   onSignInSuggestion,
 }) {
   const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const formatRequestLabel = (label) => {
+    if (!label) return ''
+    return label.length > 12 ? `${label.slice(0, 12)}…` : label
+  }
 
   const { rootCollections, childrenMap } = useMemo(() => {
     const map = new Map()
@@ -131,7 +135,9 @@ function CollectionsSidebar({
                           <span className="text-[11px] font-bold text-emerald-400">
                             {request.method}
                           </span>
-                          <span className="truncate">{request.name}</span>
+                          <span className="truncate">
+                            {formatRequestLabel(request.name)}
+                          </span>
                         </button>
                         <button
                           type="button"

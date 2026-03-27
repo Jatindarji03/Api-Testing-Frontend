@@ -11,13 +11,22 @@ function RequestPanel({
     { key: 'Accept', value: 'application/json', enabled: true },
     { key: 'Content-Type', value: 'application/json', enabled: true },
   ]
-  const normalizeRows = (rows, defaultRow = { key: '', value: '', enabled: true }) => {
-    const source = Array.isArray(rows) && rows.length ? rows : [defaultRow]
-    return source.map((row) => ({
-      key: row?.key || row?.name || '',
-      value: row?.value ?? '',
-      enabled: row?.enabled ?? true,
-    }))
+  const normalizeRows = (
+    rows,
+    defaultRow = { key: '', value: '', enabled: true, type: 'text' }
+  ) => {
+    const source = Array.isArray(rows) && rows.length ? rows : [{ ...defaultRow }]
+    return source.map((row) => {
+      const type = row?.type === 'file' ? 'file' : 'text'
+      return {
+        key: row?.key || row?.name || '',
+        value: row?.value ?? '',
+        enabled: row?.enabled ?? true,
+        type,
+        file: row?.file || null,
+        fileName: row?.fileName || row?.file?.name || '',
+      }
+    })
   }
 
   const queryParams = normalizeRows(request?.params || [])
@@ -47,6 +56,18 @@ function RequestPanel({
     request?.vars || request?.variables || request?.envVariable || [],
     { key: 'baseUrl', value: '', enabled: true }
   )
+  const bodyFormDataRows = normalizeRows(
+    request?.bodyFormData || request?.formData || request?.formdata || [],
+    { key: '', value: '', enabled: true }
+  )
+  const bodyUrlEncodedRows = normalizeRows(
+    request?.bodyUrlEncoded ||
+      request?.urlEncoded ||
+      request?.formParams ||
+      request?.formUrlEncoded ||
+      [],
+    { key: '', value: '', enabled: true }
+  )
 
   const updateRequest = (updater) => {
     if (!onRequestChange) return
@@ -66,6 +87,9 @@ function RequestPanel({
       key: row?.key || row?.name || '',
       value: row?.value ?? '',
       enabled: row?.enabled ?? true,
+      type: row?.type === 'file' ? 'file' : 'text',
+      file: row?.file || null,
+      fileName: row?.fileName || row?.file?.name || '',
     }))
 
     updateRequest((current) => {
@@ -153,6 +177,152 @@ function RequestPanel({
               </button>
             </div>
           ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onRowsChange([...rows, defaultRow])}
+        className="mt-2 rounded-md border border-white/15 px-2.5 py-1.5 text-xs text-white/80 hover:bg-white/10"
+      >
+        Add Row
+      </button>
+    </div>
+  )
+}
+
+  const renderFormDataTable = (
+    rows,
+    title,
+    onRowsChange,
+    defaultRow = {
+      key: '',
+      value: '',
+      enabled: true,
+      type: 'text',
+    }
+  ) => {
+    const handleRowChange = (index, field, value) => {
+      const nextRows = rows.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              [field]: value,
+            }
+          : row
+      )
+      onRowsChange(nextRows)
+    }
+
+    const handleTypeChange = (index, type) => {
+      const nextRows = rows.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              type,
+              file: type === 'file' ? row.file : null,
+              fileName: type === 'file' ? row.fileName : '',
+            }
+          : row
+      )
+      onRowsChange(nextRows)
+    }
+
+    const handleFileChange = (index, file) => {
+      const nextRows = rows.map((row, rowIndex) =>
+        rowIndex === index
+          ? {
+              ...row,
+              file: file || null,
+              fileName: file?.name || '',
+              value: file?.name || row.value,
+            }
+          : row
+      )
+      onRowsChange(nextRows)
+    }
+
+    const removeRow = (index) => {
+      const nextRows = rows.filter((_, rowIndex) => rowIndex !== index)
+      onRowsChange(nextRows.length ? nextRows : [defaultRow])
+    }
+
+    return (
+      <div>
+        <p className="mb-2 text-xs uppercase tracking-wide text-white/55">{title}</p>
+        <div className="overflow-hidden rounded-md border border-white/10">
+          <div className="grid grid-cols-[62px_1fr_96px_1fr_60px] bg-white/5 px-2 py-1.5 text-xs font-semibold text-white/65">
+            <span>Use</span>
+            <span>Name</span>
+            <span>Type</span>
+            <span>Value</span>
+            <span>Action</span>
+          </div>
+          {rows.map((row, index) => (
+            <div
+              key={`${title}-${index}`}
+              className="grid grid-cols-[62px_1fr_96px_1fr_60px] gap-2 border-t border-white/10 px-2 py-1.5 text-xs text-white/80"
+            >
+              <label className="inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={row.enabled ?? true}
+                  onChange={(event) =>
+                    handleRowChange(index, 'enabled', event.target.checked)
+                  }
+                  className="h-3.5 w-3.5 rounded border-white/30 bg-transparent"
+                />
+              </label>
+              <input
+                type="text"
+                value={row.key || ''}
+                onChange={(event) => handleRowChange(index, 'key', event.target.value)}
+                placeholder="name"
+                className="rounded border border-white/10 bg-[#0a0f1f] px-2 py-1 text-xs text-white/85 outline-none"
+              />
+              <select
+                value={row.type || 'text'}
+                onChange={(event) => handleTypeChange(index, event.target.value)}
+                className="rounded border border-white/10 bg-[#0a0f1f] px-2 py-1 text-xs text-white/85 outline-none"
+              >
+                <option value="text">Text</option>
+                <option value="file">File</option>
+              </select>
+              <div className="flex flex-col space-y-1">
+                {row.type === 'file' ? (
+                  <>
+                    <input
+                      key={`formdata-file-${row.key}-${row.fileName}`}
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        handleFileChange(index, event.target.files?.[0] || null)
+                      }
+                      className="text-xs text-white/80"
+                    />
+                    <span className="text-[11px] text-white/50">
+                      {row.fileName || 'No file selected'}
+                    </span>
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    value={row.value ?? ''}
+                    onChange={(event) =>
+                      handleRowChange(index, 'value', event.target.value)
+                    }
+                    placeholder="value"
+                    className="rounded border border-white/10 bg-[#0a0f1f] px-2 py-1 text-xs text-white/85 outline-none"
+                  />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => removeRow(index)}
+                className="rounded border border-white/15 px-2 py-1 text-[11px] text-white/75 hover:bg-white/10"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
         <button
           type="button"
@@ -179,6 +349,54 @@ function RequestPanel({
     }
 
     if (activeRequestTab === 'Body') {
+      const renderBodyEditor = () => {
+        if (bodyType === 'none') {
+          return (
+            <p className="text-xs text-white/60">
+              Select a body type to provide content for this request.
+            </p>
+          )
+        }
+
+        if (bodyType === 'form-data') {
+          return renderFormDataTable(
+            bodyFormDataRows,
+            'Form Data Body',
+            (rows) =>
+              updateRows('bodyFormData', rows, [
+                'formData',
+                'formdata',
+              ]),
+            { key: '', value: '', enabled: true, type: 'text' }
+          )
+        }
+
+        if (bodyType === 'x-www-form-urlencoded') {
+          return renderEditableKeyValueTable(
+            bodyUrlEncodedRows,
+            'Form URL Encoded Body',
+            (rows) =>
+              updateRows('bodyUrlEncoded', rows, [
+                'urlEncoded',
+                'urlencoded',
+                'formParams',
+                'formUrlEncoded',
+              ]),
+            { key: '', value: '', enabled: true }
+          )
+        }
+
+        const isJson = bodyType === 'json'
+        return (
+          <textarea
+            value={requestBody}
+            onChange={(event) => updateRequest({ body: event.target.value })}
+            placeholder={isJson ? 'JSON body...' : 'Request body...'}
+            className="h-[230px] w-full resize-y rounded-md border border-white/10 bg-[#0a0f1f] p-3 font-mono text-xs leading-5 text-[#e8d7aa] outline-none"
+          />
+        )
+      }
+
       return (
         <div className="space-y-3">
           <p className="mb-2 text-xs uppercase tracking-wide text-white/55">
@@ -189,18 +407,15 @@ function RequestPanel({
             onChange={(event) => updateRequest({ bodyType: event.target.value })}
             className="w-full rounded-md border border-white/10 bg-[#0a0f1f] px-3 py-2 text-xs text-white/85 outline-none"
           >
-            {['none', 'raw', 'json', 'form-data', 'x-www-form-urlencoded'].map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
+            {['none', 'raw', 'json', 'form-data', 'x-www-form-urlencoded'].map(
+              (type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              )
+            )}
           </select>
-          <textarea
-            value={requestBody}
-            onChange={(event) => updateRequest({ body: event.target.value })}
-            placeholder="Request body..."
-            className="h-[230px] w-full resize-y rounded-md border border-white/10 bg-[#0a0f1f] p-3 font-mono text-xs leading-5 text-[#e8d7aa] outline-none"
-          />
+          {renderBodyEditor()}
         </div>
       )
     }

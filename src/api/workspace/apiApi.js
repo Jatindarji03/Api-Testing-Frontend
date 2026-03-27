@@ -60,7 +60,7 @@ function getApis({ collectionId } = {}) {
       apis,
     }) 
   }
-
+  
   return request(path, {
     method: 'GET',
     
@@ -114,7 +114,7 @@ function createApi(payload) {
       api,
     })
   }
-
+console.log(api)
   return request('api/request/save-request', {
     method: 'POST',
     data: api,
