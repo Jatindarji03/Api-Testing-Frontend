@@ -7,6 +7,9 @@ function WorkspaceNavbar({
   onWorkspaceRename,
   onAddWorkspace,
   onDeleteWorkspace,
+  onInviteClick,
+  canInvite,
+  currentUserPermission,
   onLogout,
   isLocked,
   onSignInSuggestion,
@@ -38,9 +41,16 @@ function WorkspaceNavbar({
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary-brand/25 text-sm font-bold text-highlight">
           {isLocked ? 'LK' : 'GM'}
         </div>
-        <p className="text-sm font-semibold text-white">
-          {isLocked ? 'Workspace Locked' : 'GetMan'}
-        </p>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold text-white">
+            {isLocked ? 'Workspace Locked' : 'GetMan'}
+          </p>
+          {!isLocked && currentUserPermission ? (
+            <p className="text-[10px] uppercase tracking-wide text-white/50">
+              Permission: <span className="font-semibold text-white">{currentUserPermission}</span>
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
@@ -97,6 +107,19 @@ function WorkspaceNavbar({
           className="rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Delete Workspace
+        </button>
+        <button
+          type="button"
+          onClick={() => onInviteClick?.()}
+          disabled={isLocked}
+          title={
+            !canInvite && !isLocked
+              ? 'Only owners or admins can invite collaborators.'
+              : undefined
+          }
+          className="rounded-md border border-slate-400/30 bg-slate-500/10 px-3 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-slate-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Invite
         </button>
         <button
           type="button"

@@ -11,12 +11,23 @@ function CollectionsSidebar({
   onDeleteApi,
   isLocked,
   onSignInSuggestion,
+  canCreateRootCollection = true,
+  canManageCollection,
+  canManageApi,
 }) {
   const [expandedIds, setExpandedIds] = useState(() => new Set())
   const formatRequestLabel = (label) => {
     if (!label) return ''
     return label.length > 12 ? `${label.slice(0, 12)}…` : label
   }
+  const formatCollectionLabel = (label) => {
+    if (!label) return ''
+    return label.length > 15 ? `${label.slice(0, 15)}…` : label
+  }
+
+  const collectionActionGuard = canManageCollection ?? (() => true)
+  const apiActionGuard = canManageApi ?? (() => true)
+  const rootCreationAllowed = !isLocked && Boolean(canCreateRootCollection)
 
   const { rootCollections, childrenMap } = useMemo(() => {
     const map = new Map()
@@ -55,6 +66,8 @@ function CollectionsSidebar({
     const childCollections = childrenMap.get(collection.id) || []
     const hasChildren = childCollections.length > 0
     const isExpanded = expandedIds.has(collection.id)
+    const canManageCurrentCollection =
+      !isLocked && collectionActionGuard(collection)
     // const paddingLeft = `${depth * 10 + 4}px`
 
     return (
@@ -76,14 +89,19 @@ function CollectionsSidebar({
               disabled={isLocked}
             >
               <span className="text-xs text-white/60">{isExpanded ? 'v' : '>'}</span>
-              <span className="text-xs font-semibold text-white">{collection.name}</span>
+              <span
+                className="text-xs font-semibold text-white"
+                title={collection.name || undefined}
+              >
+                {formatCollectionLabel(collection.name)}
+              </span>
             </button>
 
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => onAddCollection(collection.id)}
-                disabled={isLocked}
+                disabled={!canManageCurrentCollection}
                 className="rounded-md border border-white/15 px-2 py-1 text-[11px] font-semibold text-white/75 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Create sub collection"
               >
@@ -92,7 +110,7 @@ function CollectionsSidebar({
               <button
                 type="button"
                 onClick={() => onAddApi(collection.id)}
-                disabled={isLocked}
+                disabled={!canManageCurrentCollection}
                 className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Create API request"
               >
@@ -101,7 +119,7 @@ function CollectionsSidebar({
               <button
                 type="button"
                 onClick={() => onDeleteCollection(collection.id)}
-                disabled={isLocked}
+                disabled={!canManageCurrentCollection}
                 className="rounded-md border border-rose-400/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Delete collection"
               >
@@ -119,6 +137,8 @@ function CollectionsSidebar({
               <ul className="space-y-1">
                 {(collection.api || []).map((request) => {
                   const isActive = request.id === activeRequestId
+                  const canManageRequest =
+                    !isLocked && apiActionGuard(request)
                   return (
                     <li key={request.id}>
                       <div className="flex items-center gap-1">
@@ -142,7 +162,7 @@ function CollectionsSidebar({
                         <button
                           type="button"
                           onClick={() => onDeleteApi(collection.id, request.id)}
-                          disabled={isLocked}
+                          disabled={!canManageRequest}
                           className="rounded-md border border-rose-400/35 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Delete API request"
                         >
@@ -178,7 +198,7 @@ function CollectionsSidebar({
           type="button"
           onClick={() => onAddCollection(null)}
           className="rounded-md border border-white/15 px-2 py-1 text-xs text-white/70 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={isLocked}
+          disabled={!rootCreationAllowed}
         >
           + New
         </button>
@@ -208,3 +228,4 @@ function CollectionsSidebar({
 }
 
 export default CollectionsSidebar
+

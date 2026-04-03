@@ -6,6 +6,7 @@ import CreateEntityModal from '../components/CreateEntityModal'
 import RequestPanel from '../components/RequestPanel'
 import ResponsePanel from '../components/ResponsePanel'
 import WorkspaceNavbar from '../components/WorkspaceNavbar'
+import WorkspaceInviteModal from '../components/WorkspaceInviteModal'
 import { useRequestTabs } from '../hooks/useRequestTabs'
 import { useWorkspaceState } from '../hooks/useWorkspaceState'
 import { requestTabs, responseTabs } from '../data/workspaceUiConstants'
@@ -329,6 +330,50 @@ function mergeApisIntoCollections(rawCollections, rawApis) {
   })
 }
 
+const RESOURCE_OWNER_KEYS = [
+  'createdBy',
+  'createdById',
+  'createdByUserId',
+  'created_user_id',
+  'ownerId',
+  'owner_id',
+  'memberId',
+  'userId',
+  'user_id',
+]
+
+function resolveObjectOwnerId(value) {
+  if (!value || typeof value !== 'object') return ''
+  const nestedKeys = ['id', '_id', 'userId', 'uid', 'user_id']
+  for (const key of nestedKeys) {
+    const nestedValue = value[key]
+    if (nestedValue) return String(nestedValue)
+  }
+  return ''
+}
+
+function resolveResourceOwnerId(resource) {
+  if (!resource || typeof resource !== 'object') return ''
+  for (const key of RESOURCE_OWNER_KEYS) {
+    const ownerId = resource[key]
+    if (ownerId) return String(ownerId)
+  }
+
+  const createdBy = resource.createdBy
+  if (createdBy) {
+    const nested = resolveObjectOwnerId(createdBy)
+    if (nested) return nested
+  }
+
+  const owner = resource.owner
+  if (owner) {
+    const nested = resolveObjectOwnerId(owner)
+    if (nested) return nested
+  }
+
+  return ''
+}
+
 function ApiWorkspacePage() {
   const truncateRequestName = (name) => {
     if (!name) return ''
@@ -348,6 +393,7 @@ function ApiWorkspacePage() {
   const [dirtyRequestIds, setDirtyRequestIds] = useState(() => new Set())
   const [saveNotice, setSaveNotice] = useState(null)
   const [guestRequest, setGuestRequest] = useState(createGuestRequest)
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
   const saveNoticeTimeoutRef = useRef(null)
   const {
     workspaceList,
@@ -364,6 +410,14 @@ function ApiWorkspacePage() {
     deleteCollection,
     deleteApi,
     updateWorkspaceName,
+    workspaceMembersForSelected,
+    isWorkspaceMembersLoading,
+    refreshWorkspaceMembers,
+    inviteWorkspaceMember,
+    updateWorkspaceMemberPermission,
+    removeWorkspaceMember,
+    canInviteWorkspaceMembers,
+    currentUserPermission,
   } = useWorkspaceState({
     seedWorkspaces,
     seedCollections,
@@ -510,6 +564,102 @@ function ApiWorkspacePage() {
       }, timeoutMs)
     }
   }, [])
+
+  const handleOpenInviteModal = () => setIsInviteModalOpen(true)
+  const handleCloseInviteModal = () => setIsInviteModalOpen(false)
+
+  const handleInviteUser = useCallback(
+    async ({ email, permission }) => {
+      if (!canInviteWorkspaceMembers) throw new Error('Permission denied.')
+      try {
+        const member = await inviteWorkspaceMember({ email, permission })
+        showSaveNotice(
+          `${member?.email || email} invited as ${member?.permission || permission}.`,
+          'success'
+        )
+        return member
+      } catch (error) {
+        showSaveNotice(error.message || 'Failed to invite user.', 'error')
+        throw error
+      }
+    },
+    [canInviteWorkspaceMembers, inviteWorkspaceMember, showSaveNotice]
+  )
+
+  const handlePermissionChange = useCallback(
+    async (memberId, newPermission) => {
+      if (!canInviteWorkspaceMembers) return
+      try {
+        const updated = await updateWorkspaceMemberPermission({
+          memberId,
+          permission: newPermission,
+        })
+        showSaveNotice(
+          `${updated?.email || 'User'} permission updated to ${updated?.permission || newPermission}.`,
+          'success'
+        )
+      } catch (error) {
+        showSaveNotice(error.message || 'Failed to update permission.', 'error')
+      }
+    },
+    [canInviteWorkspaceMembers, showSaveNotice, updateWorkspaceMemberPermission]
+  )
+
+  const handleRevokeMember = useCallback(
+    async (memberId) => {
+      if (!canInviteWorkspaceMembers) return
+      try {
+        const removed = await removeWorkspaceMember(memberId)
+        if (removed) {
+          showSaveNotice('Collaborator removed.', 'success')
+        }
+      } catch (error) {
+        showSaveNotice(error.message || 'Failed to remove collaborator.', 'error')
+      }
+    },
+    [canInviteWorkspaceMembers, removeWorkspaceMember, showSaveNotice]
+  )
+
+  const handleRefreshMembers = useCallback(() => {
+    if (!selectedWorkspace) return
+    void refreshWorkspaceMembers()
+  }, [refreshWorkspaceMembers, selectedWorkspace])
+
+  const currentWorkspaceData =
+    workspaceList.find((workspace) => workspace.id === selectedWorkspace) ||
+    workspaceList.find((workspace) => workspace._id === selectedWorkspace) ||
+    null
+
+  const normalizedCurrentUserPermission = (
+    currentUserPermission || ''
+  ).toLowerCase()
+  const normalizedCurrentUserId = userId ? String(userId) : ''
+  const isViewerRole = normalizedCurrentUserPermission === 'viewer'
+  const editorRoles = ['owner', 'admin', 'editor']
+  const hasEditorPrivileges = editorRoles.includes(normalizedCurrentUserPermission)
+
+  const canModifyCollection = useCallback(
+    (collection) => {
+      if (isViewerRole) return false
+      if (hasEditorPrivileges) return true
+      if (!normalizedCurrentUserId) return false
+      const ownerId = resolveResourceOwnerId(collection)
+      return Boolean(ownerId && ownerId === normalizedCurrentUserId)
+    },
+    [hasEditorPrivileges, isViewerRole, normalizedCurrentUserId]
+  )
+
+  const canModifyApi = useCallback(
+    (api) => {
+      if (isViewerRole) return false
+      if (hasEditorPrivileges) return true
+      if (!normalizedCurrentUserId) return false
+      const ownerId = resolveResourceOwnerId(api)
+      return Boolean(ownerId && ownerId === normalizedCurrentUserId)
+    },
+    [hasEditorPrivileges, isViewerRole, normalizedCurrentUserId]
+  )
+  const canCreateRootCollections = hasEditorPrivileges && !isViewerRole
 
   const findCollectionById = useCallback(
     (id) =>
@@ -751,31 +901,70 @@ function ApiWorkspacePage() {
 
   const handleCollectionToggle = useCallback(
     async (collectionId) => {
-      if (isLocked || !collectionId) return
+      if (isLocked || !collectionId || !effectiveWorkspaceId) return
 
       try {
-        const apisResponse = await getApis({ collectionId })
+        const [apisResponse, collectionsResponse] = await Promise.all([
+          getApis({ collectionId }),
+          getCollections({ workspaceId: effectiveWorkspaceId }),
+        ])
+
         const rawApis = extractList(apisResponse, ['apis', 'requests', 'request'])
         const filteredApis = rawApis.filter((apiItem) => {
           const targetCollectionId = apiItem.collectionId || apiItem.collectionid
           return !targetCollectionId || targetCollectionId === collectionId
         })
 
-        setSeedCollections((previous) =>
-          previous.map((collection) => {
+        const availableCollections = extractList(collectionsResponse, ['collections'])
+        const normalizedParentTargetId = String(collectionId)
+        const childCollections = availableCollections.filter((childCollection) => {
+          const parentId =
+            childCollection.parentCollectionId ??
+            childCollection.parentCollectionid ??
+            childCollection.collectionParentId ??
+            null
+          if (!parentId) return false
+          return String(parentId) === normalizedParentTargetId
+        })
+
+        setSeedCollections((previous) => {
+          const existingIndexMap = new Map()
+          previous.forEach((collection, index) => {
+            const key = collection.id || collection._id
+            if (key) existingIndexMap.set(key, index)
+          })
+
+          const nextCollections = previous.map((collection) => {
             const currentId = collection.id || collection._id
-            if (currentId !== collectionId) return collection
+            if (!currentId || currentId !== collectionId) return collection
             return {
               ...collection,
               api: filteredApis,
             }
           })
-        )
+
+          childCollections.forEach((childCollection) => {
+            const childId = childCollection.id || childCollection._id
+            if (!childId) return
+            const existingIndex = existingIndexMap.get(childId)
+            if (existingIndex != null && existingIndex >= 0) {
+              nextCollections[existingIndex] = {
+                ...nextCollections[existingIndex],
+                ...childCollection,
+              }
+            } else {
+              existingIndexMap.set(childId, nextCollections.length)
+              nextCollections.push(childCollection)
+            }
+          })
+
+          return nextCollections
+        })
       } catch {
-        // Keep existing collection APIs if re-fetch fails.
+        // Keep existing collection data if re-fetch fails.
       }
     },
-    [isLocked]
+    [effectiveWorkspaceId, isLocked]
   )
 
   const handleSelectRequest = useCallback(
@@ -1070,6 +1259,9 @@ function ApiWorkspacePage() {
         onDeleteWorkspace={handleDeleteWorkspace}
         onLogout={handleLogout}
         isLocked={isLocked}
+        onInviteClick={handleOpenInviteModal}
+        canInvite={canInviteWorkspaceMembers}
+        currentUserPermission={currentUserPermission}
         onSignInSuggestion={handleSignInSuggestion}
       />
 
@@ -1083,10 +1275,13 @@ function ApiWorkspacePage() {
             openModal('collection', parentCollectionId)
           }
           onAddApi={(collectionId) => openModal('api', collectionId)}
-        onDeleteApi={handleDeleteApi}
-        onDeleteCollection={handleDeleteCollection}
+          onDeleteApi={handleDeleteApi}
+          onDeleteCollection={handleDeleteCollection}
           isLocked={isLocked}
           onSignInSuggestion={handleSignInSuggestion}
+          canCreateRootCollection={canCreateRootCollections}
+          canManageCollection={canModifyCollection}
+          canManageApi={canModifyApi}
         />
         {isLoadingData ? (
           <div className="grid h-full place-items-center text-sm text-white/70">
@@ -1109,6 +1304,20 @@ function ApiWorkspacePage() {
         onChangeField={setModalField}
         onClose={closeModal}
         onSubmit={handleSubmitModal}
+      />
+      <WorkspaceInviteModal
+        isOpen={isInviteModalOpen}
+        workspaceName={currentWorkspaceData?.name}
+        workspaceId={selectedWorkspace}
+        members={workspaceMembersForSelected}
+        isLoading={isWorkspaceMembersLoading}
+        canInvite={canInviteWorkspaceMembers}
+        currentUserPermission={currentUserPermission}
+        onClose={handleCloseInviteModal}
+        onInvite={handleInviteUser}
+        onPermissionChange={handlePermissionChange}
+        onRemove={handleRevokeMember}
+        onRefresh={handleRefreshMembers}
       />
       {saveNotice ? (
         <div

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createCollection,
   deleteCollection as deleteCollectionRequest,
@@ -13,6 +13,12 @@ import {
   updateWorkspace as updateWorkspaceRequest,
 } from '../../../api/workspace/workspaceApi'
 import {
+  getWorkspaceMembers as getWorkspaceMembersRequest,
+  inviteWorkspaceMember as inviteWorkspaceMemberRequest,
+  updateWorkspaceMemberPermission as updateWorkspaceMemberPermissionRequest,
+  removeWorkspaceMember as removeWorkspaceMemberRequest,
+} from '../../../api/workspace/workspaceUserApi'
+import {
   collectDescendantIds,
   getDefaultRequestHeaders,
   normalizeCollections,
@@ -20,6 +26,69 @@ import {
   resolveApiId,
   resolveCollectionId,
 } from '../utils/workspaceDataHelpers'
+
+const DEFAULT_MEMBER_PERMISSION = 'viewer'
+
+const NEW_WORKSPACE_ID_KEYS = [
+
+
+  (response) => response?.project?._id,
+
+]
+
+function resolveWorkspaceIdFromResponse(response) {
+  if (!response || typeof response !== 'object') return ''
+  for (const extractor of NEW_WORKSPACE_ID_KEYS) {
+    const candidate = extractor(response)
+    if (candidate) return String(candidate)
+  }
+  return ''
+}
+
+function normalizeWorkspaceMember(member = {}) {
+  if (!member || typeof member !== 'object') return null
+  const permission = (member.permission || member.role || DEFAULT_MEMBER_PERMISSION).toLowerCase()
+  const id =
+    member.id ||
+    member._id ||
+    member.memberId ||
+    member.userId ||
+    `${member.email || member.userEmail || 'member'}-${permission}-${Date.now()}`
+  const userId =
+    member.userId ||
+    member.uid ||
+    member.memberId ||
+    member._id ||
+    member.id ||
+    null
+  const email = member.email || member.userEmail || member.identifier || member.inviteeEmail || 'Unknown User'
+  const status = member.status || member.inviteStatus || 'accepted'
+  return {
+    id,
+    userId,
+    email,
+    permission,
+    status,
+    workspaceId: member.workspaceId || member.projectId || null,
+    invitedBy: member.invitedBy || null,
+  }
+}
+
+function extractMembersFromPayload(payload = {}) {
+  if (!payload || typeof payload !== 'object') return []
+  const candidateArrays = ['members', 'collaborators', 'users']
+  for (const key of candidateArrays) {
+    if (Array.isArray(payload[key])) return payload[key]
+  }
+  if (Array.isArray(payload.data)) return payload.data
+  if (payload.data && typeof payload.data === 'object') {
+    for (const key of candidateArrays) {
+      if (Array.isArray(payload.data[key])) return payload.data[key]
+    }
+  }
+  if (Array.isArray(payload.results)) return payload.results
+  return []
+}
 
 function useWorkspaceState({
   seedWorkspaces,
@@ -45,6 +114,8 @@ function useWorkspaceState({
     error: '',
   })
   const [isCreatingCollection, setIsCreatingCollection] = useState(false)
+  const [workspaceMembers, setWorkspaceMembers] = useState({})
+  const [isWorkspaceMembersLoading, setIsWorkspaceMembersLoading] = useState(false)
 
   useEffect(() => {
     setWorkspaceList(normalizeWorkspaces(seedWorkspaces))
@@ -68,6 +139,31 @@ function useWorkspaceState({
     })
   }, [workspaceList])
 
+  const fetchWorkspaceMembers = useCallback(
+    async (workspaceIdArg) => {
+      const workspaceId = workspaceIdArg || selectedWorkspace
+      if (!workspaceId) return []
+      setIsWorkspaceMembersLoading(true)
+      try {
+        const response = await getWorkspaceMembersRequest({ workspaceId })
+        const rawMembers = extractMembersFromPayload(response)
+        const normalized = rawMembers
+          .map(normalizeWorkspaceMember)
+          .filter(Boolean)
+        setWorkspaceMembers((prev) => ({
+          ...prev,
+          [workspaceId]: normalized,
+        }))
+        return normalized
+      } catch {
+        return []
+      } finally {
+        setIsWorkspaceMembersLoading(false)
+      }
+    },
+    [selectedWorkspace]
+  )
+
   const workspaceCollections = useMemo(
     () =>
       collectionList.filter(
@@ -75,6 +171,11 @@ function useWorkspaceState({
       ),
     [collectionList, selectedWorkspace]
   )
+
+  useEffect(() => {
+    if (!selectedWorkspace) return
+    void fetchWorkspaceMembers(selectedWorkspace)
+  }, [selectedWorkspace, fetchWorkspaceMembers])
 
   const openModal = (type, parentCollectionId = null) => {
     if (isLocked) return
@@ -105,6 +206,108 @@ function useWorkspaceState({
   const setModalField = (field, value) => {
     setModalState((prev) => ({ ...prev, [field]: value }))
   }
+
+  const refreshWorkspaceMembers = useCallback(() => {
+    if (!selectedWorkspace) return Promise.resolve([])
+    return fetchWorkspaceMembers(selectedWorkspace)
+  }, [fetchWorkspaceMembers, selectedWorkspace])
+
+  const inviteWorkspaceMember = useCallback(
+    async ({ email, permission } = {}) => {
+      if (!selectedWorkspace || !email) {
+        throw new Error('Select a workspace and provide an email.')
+      }
+      const normalizedPermission = (permission || DEFAULT_MEMBER_PERMISSION).toLowerCase()
+      const response = await inviteWorkspaceMemberRequest({
+        workspaceId: selectedWorkspace,
+        email,
+        permission: normalizedPermission,
+      })
+      const candidate =
+        response?.member ||
+        response?.data?.member ||
+        response?.data ||
+        (Array.isArray(response?.members) ? response.members[0] : null) ||
+        null
+      const normalizedMember =
+        normalizeWorkspaceMember(candidate) || {
+          id: `invite-${Date.now()}-${email}`,
+          userId: null,
+          email,
+          permission: normalizedPermission,
+          status: 'pending',
+          workspaceId: selectedWorkspace,
+        }
+      setWorkspaceMembers((prev) => {
+        const existing = prev[selectedWorkspace] || []
+        const filtered = existing.filter((member) => member.id !== normalizedMember.id)
+        return {
+          ...prev,
+          [selectedWorkspace]: [...filtered, normalizedMember],
+        }
+      })
+      return normalizedMember
+    },
+    [selectedWorkspace]
+  )
+
+  const updateWorkspaceMemberPermission = useCallback(
+    async ({ memberId, permission } = {}) => {
+      if (!selectedWorkspace || !memberId || !permission) return null
+      const normalizedPermission = permission.toLowerCase()
+      const response = await updateWorkspaceMemberPermissionRequest({
+        workspaceId: selectedWorkspace,
+        memberId,
+        permission: normalizedPermission,
+      })
+      const candidate =
+        response?.member ||
+        response?.data?.member ||
+        response?.data ||
+        null
+      const payload = candidate || {}
+      const normalizedMember =
+        normalizeWorkspaceMember({
+          ...payload,
+          id: payload.id || memberId,
+          permission: normalizedPermission,
+        }) || {
+          id: memberId,
+          userId: payload.userId || payload.uid || null,
+          email: payload.email || 'Unknown User',
+          permission: normalizedPermission,
+          status: 'accepted',
+        }
+      setWorkspaceMembers((prev) => {
+        const existing = prev[selectedWorkspace] || []
+        const filtered = existing.filter((member) => member.id !== memberId)
+        return {
+          ...prev,
+          [selectedWorkspace]: [...filtered, normalizedMember],
+        }
+      })
+      return normalizedMember
+    },
+    [selectedWorkspace]
+  )
+
+  const removeWorkspaceMember = useCallback(
+    async (memberId) => {
+      if (!selectedWorkspace || !memberId) return false
+      await removeWorkspaceMemberRequest({
+        workspaceId: selectedWorkspace,
+        memberId,
+      })
+      setWorkspaceMembers((prev) => ({
+        ...prev,
+        [selectedWorkspace]: (prev[selectedWorkspace] || []).filter(
+          (member) => member.id !== memberId
+        ),
+      }))
+      return true
+    },
+    [selectedWorkspace]
+  )
 
   const deleteWorkspace = async () => {
     if (isLocked || workspaceList.length <= 1) return
@@ -143,10 +346,10 @@ function useWorkspaceState({
       prev.map((workspace) =>
         workspace.id === selectedWorkspace
           ? {
-              ...workspace,
-              name: trimmedName,
-              projectName: trimmedName,
-            }
+            ...workspace,
+            name: trimmedName,
+            projectName: trimmedName,
+          }
           : workspace
       )
     )
@@ -162,10 +365,10 @@ function useWorkspaceState({
         prev.map((workspace) =>
           workspace.id === selectedWorkspace
             ? {
-                ...workspace,
-                name: previousName,
-                projectName: previousName,
-              }
+              ...workspace,
+              name: previousName,
+              projectName: previousName,
+            }
             : workspace
         )
       )
@@ -235,15 +438,7 @@ function useWorkspaceState({
       try {
         const response = await createWorkspaceRequest(payload)
         const nextWorkspaceId =
-          response?.workspace?.id ??
-          response?.workspace?._id ??
-          response?.data?.workspace?.id ??
-          response?.data?.workspace?._id ??
-          response?.id ??
-          response?._id ??
-          response?.data?.id ??
-          response?.data?._id ??
-          `ws-${Date.now()}`
+          resolveWorkspaceIdFromResponse(response) || `ws-${Date.now()}`
         const nextWorkspace = {
           id: nextWorkspaceId,
           _id: nextWorkspaceId,
@@ -376,6 +571,18 @@ function useWorkspaceState({
     return false
   }
 
+  const workspaceMembersForSelected = workspaceMembers[selectedWorkspace] || []
+  const currentUserWorkspaceEntry = workspaceMembersForSelected.find(
+    (member) => member.userId && userId && member.userId === userId
+  )
+  const workspaceMeta =
+    workspaceList.find((workspace) => workspace.id === selectedWorkspace) || null
+  const currentUserPermission =
+    currentUserWorkspaceEntry?.permission ||
+    workspaceMeta?.permission ||
+    'owner'
+  const canInviteWorkspaceMembers = ['owner', 'admin'].includes(currentUserPermission)
+
   return {
     workspaceList,
     selectedWorkspace,
@@ -391,6 +598,15 @@ function useWorkspaceState({
     deleteCollection,
     deleteApi,
     updateWorkspaceName,
+    workspaceMembers,
+    workspaceMembersForSelected,
+    isWorkspaceMembersLoading,
+    refreshWorkspaceMembers,
+    inviteWorkspaceMember,
+    updateWorkspaceMemberPermission,
+    removeWorkspaceMember,
+    canInviteWorkspaceMembers,
+    currentUserPermission,
   }
 }
 
