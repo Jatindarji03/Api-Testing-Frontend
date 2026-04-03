@@ -47,7 +47,7 @@ function WorkspaceNavbar({
           </p>
           {!isLocked && currentUserPermission ? (
             <p className="text-[10px] uppercase tracking-wide text-white/50">
-              Permission: <span className="font-semibold text-white">{currentUserPermission}</span>
+              Role: <span className="font-semibold text-white">{currentUserPermission}</span>
             </p>
           ) : null}
         </div>

@@ -4,20 +4,20 @@ function getWorkspaceMembers({ workspaceId } = {}) {
   if (!workspaceId) {
     return Promise.reject(new Error('workspaceId is required'))
   }
-  return request(`/api/project/${workspaceId}/members`, {
+  return request(`/api/member/${workspaceId}`, {
     method: 'GET',
   })
 }
 
-function inviteWorkspaceMember({ workspaceId, email, permission } = {}) {
-  if (!workspaceId || !email) {
-    return Promise.reject(new Error('workspaceId and email are required'))
+function inviteWorkspaceMember({ workspaceId, email, role } = {}) {
+  if (!workspaceId || !email || !role) {
+    return Promise.reject(new Error('workspaceId, email, and role are required'))
   }
-  return request(`/api/project/${workspaceId}/invite`, {
+  return request(`/api/member/invite/${workspaceId}`, {
     method: 'POST',
     data: {
       email,
-      permission,
+      role,
     },
   })
 }

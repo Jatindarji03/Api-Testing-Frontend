@@ -305,6 +305,26 @@ function extractList(payload, keys = []) {
   return []
 }
 
+function extractResponseMessage(payload) {
+  if (!payload || typeof payload !== 'object') return ''
+  const candidates = [
+    payload.message,
+    payload.api?.message,
+    payload.response?.message,
+    payload.data?.message,
+    payload.data?.api?.message,
+    payload.data?.response?.message,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim()
+    }
+  }
+
+  return ''
+}
+
 function mergeApisIntoCollections(rawCollections, rawApis) {
   const apisByCollectionId = new Map()
 
@@ -414,8 +434,6 @@ function ApiWorkspacePage() {
     isWorkspaceMembersLoading,
     refreshWorkspaceMembers,
     inviteWorkspaceMember,
-    updateWorkspaceMemberPermission,
-    removeWorkspaceMember,
     canInviteWorkspaceMembers,
     currentUserPermission,
   } = useWorkspaceState({
@@ -458,7 +476,10 @@ function ApiWorkspacePage() {
       const apisByCollection = await Promise.all(
         collectionIds.map(async (collectionId) => {
           try {
-            const apisResponse = await getApis({ collectionId })
+          const apisResponse = await getApis({
+            collectionId,
+            projectId: effectiveWorkspaceId,
+          })
             return extractList(apisResponse, ['apis', 'requests', 'request'])
           } catch {
             return []
@@ -569,12 +590,12 @@ function ApiWorkspacePage() {
   const handleCloseInviteModal = () => setIsInviteModalOpen(false)
 
   const handleInviteUser = useCallback(
-    async ({ email, permission }) => {
+    async ({ email, role }) => {
       if (!canInviteWorkspaceMembers) throw new Error('Permission denied.')
       try {
-        const member = await inviteWorkspaceMember({ email, permission })
+        const member = await inviteWorkspaceMember({ email, role })
         showSaveNotice(
-          `${member?.email || email} invited as ${member?.permission || permission}.`,
+          `${member?.email || email} invited as ${member?.permission || role}.`,
           'success'
         )
         return member
@@ -584,40 +605,6 @@ function ApiWorkspacePage() {
       }
     },
     [canInviteWorkspaceMembers, inviteWorkspaceMember, showSaveNotice]
-  )
-
-  const handlePermissionChange = useCallback(
-    async (memberId, newPermission) => {
-      if (!canInviteWorkspaceMembers) return
-      try {
-        const updated = await updateWorkspaceMemberPermission({
-          memberId,
-          permission: newPermission,
-        })
-        showSaveNotice(
-          `${updated?.email || 'User'} permission updated to ${updated?.permission || newPermission}.`,
-          'success'
-        )
-      } catch (error) {
-        showSaveNotice(error.message || 'Failed to update permission.', 'error')
-      }
-    },
-    [canInviteWorkspaceMembers, showSaveNotice, updateWorkspaceMemberPermission]
-  )
-
-  const handleRevokeMember = useCallback(
-    async (memberId) => {
-      if (!canInviteWorkspaceMembers) return
-      try {
-        const removed = await removeWorkspaceMember(memberId)
-        if (removed) {
-          showSaveNotice('Collaborator removed.', 'success')
-        }
-      } catch (error) {
-        showSaveNotice(error.message || 'Failed to remove collaborator.', 'error')
-      }
-    },
-    [canInviteWorkspaceMembers, removeWorkspaceMember, showSaveNotice]
   )
 
   const handleRefreshMembers = useCallback(() => {
@@ -675,8 +662,15 @@ function ApiWorkspacePage() {
       const confirmed = window.confirm('Are you sure?')
       if (!confirmed) return
       const collection = findCollectionById(collectionId)
-      await deleteCollection(collectionId)
-      showSaveNotice(`${collection?.name || 'Collection'} deleted.`, 'success')
+      try {
+        await deleteCollection(collectionId)
+        showSaveNotice(`${collection?.name || 'Collection'} deleted.`, 'success')
+      } catch (error) {
+        showSaveNotice(
+          error?.message || 'Failed to delete collection.',
+          'error'
+        )
+      }
     },
     [deleteCollection, findCollectionById, showSaveNotice]
   )
@@ -699,8 +693,15 @@ function ApiWorkspacePage() {
       const confirmed = window.confirm('Are you sure?')
       if (!confirmed) return
       const apiItem = findApiById(collectionId, apiId)
-      await deleteApi(collectionId, apiId)
-      showSaveNotice(`${apiItem?.name || 'API request'} deleted.`, 'success')
+      try {
+        const response = await deleteApi(collectionId, apiId)
+        const message =
+          extractResponseMessage(response) ||
+          `${apiItem?.name || 'API request'} deleted.`
+        showSaveNotice(message, 'success')
+      } catch (error) {
+        showSaveNotice(error?.message || 'Failed to delete API request.', 'error')
+      }
     },
     [deleteApi, findApiById, showSaveNotice]
   )
@@ -797,7 +798,7 @@ function ApiWorkspacePage() {
     showSaveNotice('Saving API...', 'info', 0)
 
     try {
-      await updateApi(requestId, payload)
+      const response = await updateApi(requestId, payload, workspaceId)
       const normalizedCollectionId =
         collectionId || requestData.collectionId || requestData.collectionid || ''
       const normalizedApiUrl = apiUrl
@@ -874,7 +875,9 @@ function ApiWorkspacePage() {
         next.delete(requestId)
         return next
       })
-      showSaveNotice('API saved successfully.', 'success')
+      const successMessage =
+        extractResponseMessage(response) || 'API saved successfully.'
+      showSaveNotice(successMessage, 'success')
     } catch (error) {
       showSaveNotice(error.message || 'Failed to save API.', 'error')
     } finally {
@@ -905,7 +908,7 @@ function ApiWorkspacePage() {
 
       try {
         const [apisResponse, collectionsResponse] = await Promise.all([
-          getApis({ collectionId }),
+          getApis({ collectionId, projectId: effectiveWorkspaceId }),
           getCollections({ workspaceId: effectiveWorkspaceId }),
         ])
 
@@ -976,8 +979,15 @@ function ApiWorkspacePage() {
       const requestId = request.id || request._id
       if (!requestId) return
 
+      const projectId =
+        selectedWorkspace ||
+        request.projectId ||
+        request.workspaceId ||
+        effectiveWorkspaceId ||
+        ''
+      if (!projectId) return
       try {
-        const response = await getRequestById({ requestId })
+        const response = await getRequestById({ requestId, projectId })
         const fetchedRequest = extractRequestDetail(response)
         if (!fetchedRequest) return
 
@@ -1315,8 +1325,6 @@ function ApiWorkspacePage() {
         currentUserPermission={currentUserPermission}
         onClose={handleCloseInviteModal}
         onInvite={handleInviteUser}
-        onPermissionChange={handlePermissionChange}
-        onRemove={handleRevokeMember}
         onRefresh={handleRefreshMembers}
       />
       {saveNotice ? (

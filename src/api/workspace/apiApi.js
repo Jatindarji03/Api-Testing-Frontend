@@ -45,8 +45,11 @@ const DUMMY_APIS = [
   },
 ]
 
-function getApis({ collectionId } = {}) {
-  const path = `/api/request/collection/get-request/${collectionId}`
+function getApis({ collectionId, projectId } = {}) {
+  if (!collectionId || !projectId) {
+    return Promise.reject(new Error('collectionId and projectId are required'))
+  }
+  const path = `/api/request/collection/get-request/${collectionId}/${projectId}`
 
   if (USE_DUMMY_API_RESPONSES) {
     const apis = DUMMY_APIS.filter((apiItem) => {
@@ -63,17 +66,16 @@ function getApis({ collectionId } = {}) {
   
   return request(path, {
     method: 'GET',
-    
   })
 }
 
-function getRequestById({ requestId } = {}) {
+function getRequestById({ requestId, projectId } = {}) {
   const targetId = requestId
-  if (!targetId) {
-    return Promise.reject(new Error('requestId is required'))
+  if (!targetId || !projectId) {
+    return Promise.reject(new Error('requestId and projectId are required'))
   }
 
-  const path = `/api/request/get-request/${targetId}`
+  const path = `/api/request/get-request/${targetId}/${projectId}`
 
   if (USE_DUMMY_API_RESPONSES) {
     const matchedApi = DUMMY_APIS.find((apiItem) => apiItem._id === targetId)
@@ -91,37 +93,47 @@ function getRequestById({ requestId } = {}) {
 
 function createApi(payload) {
   const generatedId = `api-${Date.now()}`
-    const nowIso = new Date().toISOString()
-    console.log(payload)
-    const api = {
-      _id: generatedId,
-      collectionId: payload?.collectionId || payload?.collectionid || '',
-      apiName: payload?.apiName || payload?.name || 'Untitled API',
-      apiUrl: payload?.apiUrl || payload?.url || '',
-      method: (payload?.method || 'GET').toUpperCase(),
-      params: payload?.params || [],
-      header: payload?.header || payload?.headers || [],
-      body: payload?.body ?? '',
-      bodyType: payload?.bodyType ?? 'json',
-      createdAt: nowIso,
-    }
+  const nowIso = new Date().toISOString()
+  const projectId = payload?.projectId || payload?.workspaceId || ''
+  if (!projectId) {
+    return Promise.reject(new Error('projectId is required to create an API request'))
+  }
+  const api = {
+    _id: generatedId,
+    collectionId: payload?.collectionId || payload?.collectionid || '',
+    apiName: payload?.apiName || payload?.name || 'Untitled API',
+    apiUrl: payload?.apiUrl || payload?.url || '',
+    method: (payload?.method || 'GET').toUpperCase(),
+    params: payload?.params || [],
+    header: payload?.header || payload?.headers || [],
+    body: payload?.body ?? '',
+    bodyType: payload?.bodyType ?? 'json',
+    projectId,
+    collectionid: payload?.collectionId || payload?.collectionid || '',
+    workspaceId: payload?.workspaceId || payload?.projectId || '',
+    createdAt: nowIso,
+  }
 
   if (USE_DUMMY_API_RESPONSES) {
-    
     return Promise.resolve({
       success: true,
       message: 'Dummy createApi response from apiApi.js',
       api,
     })
   }
-console.log(api)
-  return request('api/request/save-request', {
+  console.log(api)
+  const path = `/api/request/save-request/${projectId}`
+  return request(path, {
     method: 'POST',
     data: api,
   })
 }
 
-function deleteApi(apiId) {
+function deleteApi(apiId, projectId) {
+  if (!apiId || !projectId) {
+    return Promise.reject(new Error('apiId and projectId are required to delete an API request'))
+  }
+
   if (USE_DUMMY_API_RESPONSES) {
     return Promise.resolve({
       success: true,
@@ -132,12 +144,12 @@ function deleteApi(apiId) {
     })
   }
 
-  return request(`/api/request/delete-request/${apiId}`, {
+  return request(`/api/request/delete-request/${apiId}/${projectId}`, {
     method: 'DELETE',
   })
 }
 
-function updateApi(apiId, payload) {
+function updateApi(apiId, payload, projectId) {
   if (USE_DUMMY_API_RESPONSES) {
     const targetIndex = DUMMY_APIS.findIndex((apiItem) => apiItem._id === apiId)
 
@@ -160,7 +172,15 @@ function updateApi(apiId, payload) {
     })
   }
 
-  return request(`/api/request/update-request/${apiId}`, {
+  const targetProjectId =
+    projectId || payload?.projectId || payload?.workspaceId || ''
+  if (!apiId || !targetProjectId) {
+    return Promise.reject(
+      new Error('apiId and projectId are required to update an API request')
+    )
+  }
+
+  return request(`/api/request/update-request/${apiId}/${targetProjectId}`, {
     method: 'PATCH',
     data: payload,
   })

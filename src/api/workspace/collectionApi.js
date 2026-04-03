@@ -8,7 +8,7 @@ function getCollections({ workspaceId } = {}) {
 }
 
 function createCollection(payload) {
-  return request('/api/collection/create-collection', {
+  return request(`/api/collection/create-collection/${payload.projectId}`, {
     method: 'POST',
     data: payload,
   })

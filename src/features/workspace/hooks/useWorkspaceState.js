@@ -27,7 +27,7 @@ import {
   resolveCollectionId,
 } from '../utils/workspaceDataHelpers'
 
-const DEFAULT_MEMBER_PERMISSION = 'viewer'
+const DEFAULT_MEMBER_ROLE = 'viewer'
 
 const NEW_WORKSPACE_ID_KEYS = [
 
@@ -47,41 +47,75 @@ function resolveWorkspaceIdFromResponse(response) {
 
 function normalizeWorkspaceMember(member = {}) {
   if (!member || typeof member !== 'object') return null
-  const permission = (member.permission || member.role || DEFAULT_MEMBER_PERMISSION).toLowerCase()
+  const permission = (member.permission || member.role || DEFAULT_MEMBER_ROLE).toLowerCase()
+  const nestedUser = member.user || {}
   const id =
     member.id ||
     member._id ||
     member.memberId ||
     member.userId ||
-    `${member.email || member.userEmail || 'member'}-${permission}-${Date.now()}`
+    nestedUser.uid ||
+    nestedUser.id ||
+    `${member.email || nestedUser.email || 'member'}-${permission}-${Date.now()}`
   const userId =
     member.userId ||
     member.uid ||
     member.memberId ||
     member._id ||
-    member.id ||
+    nestedUser.uid ||
+    nestedUser.id ||
     null
-  const email = member.email || member.userEmail || member.identifier || member.inviteeEmail || 'Unknown User'
+  const email =
+    member.email ||
+    member.userEmail ||
+    member.identifier ||
+    member.inviteeEmail ||
+    nestedUser.email ||
+    'Unknown User'
+  const displayName =
+    member.name ||
+    member.displayName ||
+    nestedUser.name ||
+    nestedUser.displayName ||
+    nestedUser.fullName ||
+    email ||
+    'Member'
   const status = member.status || member.inviteStatus || 'accepted'
   return {
     id,
     userId,
     email,
     permission,
+    name: displayName,
     status,
-    workspaceId: member.workspaceId || member.projectId || null,
+    workspaceId: member.workspaceId || member.projectId || nestedUser.workspaceId || null,
     invitedBy: member.invitedBy || null,
   }
+}
+
+function extractIndexedMembers(source = {}) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null
+  const indexedEntries = Object.entries(source).filter(
+    ([key, value]) => /^\d+$/.test(key) && Boolean(value) && typeof value === 'object'
+  )
+  if (!indexedEntries.length) return null
+  return indexedEntries
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, value]) => value)
 }
 
 function extractMembersFromPayload(payload = {}) {
   if (!payload || typeof payload !== 'object') return []
   const candidateArrays = ['members', 'collaborators', 'users']
+  const indexedMembers = extractIndexedMembers(payload)
+  if (indexedMembers) return indexedMembers
   for (const key of candidateArrays) {
     if (Array.isArray(payload[key])) return payload[key]
   }
   if (Array.isArray(payload.data)) return payload.data
   if (payload.data && typeof payload.data === 'object') {
+    const indexedFromData = extractIndexedMembers(payload.data)
+    if (indexedFromData) return indexedFromData
     for (const key of candidateArrays) {
       if (Array.isArray(payload.data[key])) return payload.data[key]
     }
@@ -213,15 +247,15 @@ function useWorkspaceState({
   }, [fetchWorkspaceMembers, selectedWorkspace])
 
   const inviteWorkspaceMember = useCallback(
-    async ({ email, permission } = {}) => {
-      if (!selectedWorkspace || !email) {
-        throw new Error('Select a workspace and provide an email.')
+    async ({ email, role } = {}) => {
+      if (!selectedWorkspace || !email || !role) {
+        throw new Error('Select a workspace and provide an email and role.')
       }
-      const normalizedPermission = (permission || DEFAULT_MEMBER_PERMISSION).toLowerCase()
+      const normalizedRole = (role || DEFAULT_MEMBER_ROLE).toLowerCase()
       const response = await inviteWorkspaceMemberRequest({
         workspaceId: selectedWorkspace,
         email,
-        permission: normalizedPermission,
+        role: normalizedRole,
       })
       const candidate =
         response?.member ||
@@ -234,7 +268,7 @@ function useWorkspaceState({
           id: `invite-${Date.now()}-${email}`,
           userId: null,
           email,
-          permission: normalizedPermission,
+          permission: normalizedRole,
           status: 'pending',
           workspaceId: selectedWorkspace,
         }
@@ -316,7 +350,7 @@ function useWorkspaceState({
     try {
       await deleteWorkspaceRequest(targetId)
     } catch {
-      return
+      return null
     }
 
     setWorkspaceList((prev) => {
@@ -388,11 +422,7 @@ function useWorkspaceState({
       return aHasParentInside ? -1 : 1
     })
 
-    try {
-      await Promise.all(idsInDeleteOrder.map((id) => deleteCollectionRequest(id)))
-    } catch {
-      return
-    }
+    await Promise.all(idsInDeleteOrder.map((id) => deleteCollectionRequest(id)))
 
     setCollectionList((prev) =>
       prev.filter((collection) => !idsToDelete.has(collection.id))
@@ -400,13 +430,10 @@ function useWorkspaceState({
   }
 
   const deleteApi = async (collectionId, apiId) => {
-    if (isLocked) return
+    if (isLocked || !selectedWorkspace) return null
 
-    try {
-      await deleteApiRequest(apiId)
-    } catch {
-      return
-    }
+    let response = null
+    response = await deleteApiRequest(apiId, selectedWorkspace)
 
     setCollectionList((prev) =>
       prev.map((collection) => {
@@ -417,6 +444,7 @@ function useWorkspaceState({
         }
       })
     )
+    return response
   }
 
   const createEntity = async () => {
@@ -577,10 +605,11 @@ function useWorkspaceState({
   )
   const workspaceMeta =
     workspaceList.find((workspace) => workspace.id === selectedWorkspace) || null
+  const workspaceMetaRole = (workspaceMeta?.role || workspaceMeta?.permission || 'viewer')
+  const normalizedWorkspaceMetaRole =
+    typeof workspaceMetaRole === 'string' ? workspaceMetaRole.toLowerCase() : 'viewer'
   const currentUserPermission =
-    currentUserWorkspaceEntry?.permission ||
-    workspaceMeta?.permission ||
-    'owner'
+    currentUserWorkspaceEntry?.permission || normalizedWorkspaceMetaRole || 'viewer'
   const canInviteWorkspaceMembers = ['owner', 'admin'].includes(currentUserPermission)
 
   return {

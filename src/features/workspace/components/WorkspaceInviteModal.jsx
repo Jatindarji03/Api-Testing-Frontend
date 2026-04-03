@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-const PERMISSION_OPTIONS = [
+const ROLE_OPTIONS = [
   { value: 'editor', label: 'Editor' },
   { value: 'viewer', label: 'Viewer' },
 ]
@@ -15,12 +15,10 @@ function WorkspaceInviteModal({
   currentUserPermission,
   onClose,
   onInvite,
-  onPermissionChange,
-  onRemove,
   onRefresh,
 }) {
   const [email, setEmail] = useState('')
-  const [permission, setPermission] = useState('viewer')
+  const [role, setRole] = useState('viewer')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -39,9 +37,9 @@ function WorkspaceInviteModal({
     setIsSubmitting(true)
     setError('')
     try {
-      await onInvite({ email, permission })
+      await onInvite({ email, role })
       setEmail('')
-      setPermission('viewer')
+      setRole('viewer')
     } catch (submitError) {
       setError(submitError?.message || 'Failed to send invite.')
     } finally {
@@ -70,7 +68,7 @@ function WorkspaceInviteModal({
 
         <div className="mt-4 flex items-center justify-between gap-4">
           <p className="text-xs text-white/70">
-            Your permission: <span className="font-semibold">{currentUserPermission}</span>
+            Your role: <span className="font-semibold">{currentUserPermission}</span>
           </p>
           <button
             type="button"
@@ -96,12 +94,12 @@ function WorkspaceInviteModal({
               disabled={!canInvite || isSubmitting}
             />
             <select
-              value={permission}
-              onChange={(event) => setPermission(event.target.value)}
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
               className="w-full rounded-md border border-white/15 bg-[#0d1428] px-3 py-2 text-sm text-white outline-none focus:border-highlight/70"
               disabled={!canInvite || isSubmitting}
             >
-              {PERMISSION_OPTIONS.map((option) => (
+              {ROLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -147,38 +145,23 @@ function WorkspaceInviteModal({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-white">{member.email}</p>
+                      <p className="text-sm font-semibold text-white">
+                        {member.name || member.email}
+                      </p>
+                      <p className="text-xs text-white/60">
+                        {member.email}
+                      </p>
                       <p className="text-xs text-white/60">
                         Status: {member.status || 'accepted'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-semibold uppercase tracking-widest text-white/60">
-                        Permission
+                        Role
                       </span>
-                      <select
-                        value={member.permission || 'viewer'}
-                        onChange={(event) =>
-                          onPermissionChange(member.id, event.target.value)
-                        }
-                        disabled={!canInvite}
-                        className="rounded-md border border-white/15 bg-[#0d1428] px-1.5 py-1 text-[11px] text-white outline-none focus:border-highlight/70"
-                      >
-                        {PERMISSION_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      {canInvite ? (
-                        <button
-                          type="button"
-                          onClick={() => onRemove(member.id)}
-                          className="rounded-md border border-rose-400/40 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/20"
-                        >
-                          Revoke
-                        </button>
-                      ) : null}
+                      <p className="text-sm font-semibold text-white">
+                        {member.permission || 'viewer'}
+                      </p>
                     </div>
                   </div>
                 </li>
