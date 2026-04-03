@@ -536,7 +536,24 @@ function ApiWorkspacePage() {
 
   const handleSubmitModal = async (event) => {
     event.preventDefault()
-    await createEntity()
+    const result = await createEntity()
+    if (!result || typeof result !== 'object') return
+
+    if (result.type === 'collection') {
+      setSeedCollections((previous) => [...previous, result.resource])
+    } else if (result.type === 'api') {
+      setSeedCollections((previous) =>
+        previous.map((collection) => {
+          const collectionId = collection.id || collection._id
+          if (!collectionId || collectionId !== result.resource.collectionId)
+            return collection
+          return {
+            ...collection,
+            api: [...(collection.api || []), result.resource.api],
+          }
+        })
+      )
+    }
   }
 
   const handleRequestChange = (updater) => {
@@ -663,8 +680,11 @@ function ApiWorkspacePage() {
       if (!confirmed) return
       const collection = findCollectionById(collectionId)
       try {
-        await deleteCollection(collectionId)
-        showSaveNotice(`${collection?.name || 'Collection'} deleted.`, 'success')
+        const response = await deleteCollection(collectionId)
+        const message =
+          extractResponseMessage(response) ||
+          `${collection?.name || 'Collection'} deleted.`
+        showSaveNotice(message, 'success')
       } catch (error) {
         showSaveNotice(
           error?.message || 'Failed to delete collection.',
@@ -713,8 +733,18 @@ function ApiWorkspacePage() {
     const workspace = workspaceList.find(
       (workspaceItem) => workspaceItem.id === selectedWorkspace
     )
-    await deleteWorkspace()
-    showSaveNotice(`${workspace?.name || 'Workspace'} deleted.`, 'success')
+    try {
+      const response = await deleteWorkspace()
+      const message =
+        extractResponseMessage(response) ||
+        `${workspace?.name || 'Workspace'} deleted.`
+      showSaveNotice(message, 'success')
+    } catch (error) {
+      showSaveNotice(
+        error?.message || 'Failed to delete workspace.',
+        'error'
+      )
+    }
   }, [deleteWorkspace, selectedWorkspace, showSaveNotice, workspaceList])
 
   const handleSaveActiveRequest = useCallback(async () => {

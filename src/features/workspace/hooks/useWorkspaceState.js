@@ -344,14 +344,9 @@ function useWorkspaceState({
   )
 
   const deleteWorkspace = async () => {
-    if (isLocked || workspaceList.length <= 1) return
+    if (isLocked || workspaceList.length <= 1) return null
     const targetId = selectedWorkspace
-
-    try {
-      await deleteWorkspaceRequest(targetId)
-    } catch {
-      return null
-    }
+    const response = await deleteWorkspaceRequest(targetId)
 
     setWorkspaceList((prev) => {
       const next = prev.filter((workspace) => workspace.id !== targetId)
@@ -362,6 +357,7 @@ function useWorkspaceState({
     setCollectionList((prev) =>
       prev.filter((collection) => collection.workspaceId !== targetId)
     )
+    return response
   }
 
   const updateWorkspaceName = async (nextName) => {
@@ -422,11 +418,16 @@ function useWorkspaceState({
       return aHasParentInside ? -1 : 1
     })
 
-    await Promise.all(idsInDeleteOrder.map((id) => deleteCollectionRequest(id)))
+    const responses = await Promise.all(
+      idsInDeleteOrder.map((id) =>
+        deleteCollectionRequest(id, selectedWorkspace)
+      )
+    )
 
     setCollectionList((prev) =>
       prev.filter((collection) => !idsToDelete.has(collection.id))
     )
+    return responses[0] || null
   }
 
   const deleteApi = async (collectionId, apiId) => {
@@ -515,10 +516,10 @@ function useWorkspaceState({
         }
         setCollectionList((prev) => [...prev, nextCollection])
         closeModal()
-        return true
+        return { type: 'collection', resource: nextCollection }
       } catch (error) {
         setModalField('error', error.message)
-        return false
+        return null
       } finally {
         setIsCreatingCollection(false)
       }
@@ -587,7 +588,10 @@ function useWorkspaceState({
           })
         )
         closeModal()
-        return true
+        return {
+          type: 'api',
+          resource: { collectionId: payload.collectionId, api: nextApi },
+        }
       } catch (error) {
         setModalField('error', error.message)
         return false

@@ -1,7 +1,7 @@
 import { request } from '../auth/authClient'
 
 function getCollections({ workspaceId } = {}) {
-  console.log(workspaceId)
+ 
   return request(`/api/collection/all-collections/${workspaceId}`, {
     method: 'GET',
   })
@@ -14,10 +14,13 @@ function createCollection(payload) {
   })
 }
 
-function deleteCollection(collectionId) {
-  return request(`/api/collection/delete-collection/${collectionId}`, {
-    method: 'DELETE',
-  })
+function deleteCollection(collectionId, projectId) {
+  return request(
+    `/api/collection/delete-collection/${collectionId}/${projectId}`,
+    {
+      method: 'DELETE',
+    }
+  )
 }
 
 export { createCollection, deleteCollection, getCollections }
