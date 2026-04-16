@@ -48,14 +48,6 @@ function RequestPanel({
   const authToken = request?.authToken || auth?.token || ''
   const authUsername = request?.authUsername || auth?.username || ''
   const authPassword = request?.authPassword || auth?.password || ''
-  const preRequestScript =
-    request?.preRequestScript || request?.script?.preRequest || ''
-  const postResponseScript =
-    request?.postResponseScript || request?.script?.postResponse || ''
-  const requestVars = normalizeRows(
-    request?.vars || request?.variables || request?.envVariable || [],
-    { key: 'baseUrl', value: '', enabled: true }
-  )
   const bodyFormDataRows = normalizeRows(
     request?.bodyFormData || request?.formData || request?.formdata || [],
     { key: '', value: '', enabled: true }
@@ -506,64 +498,6 @@ function RequestPanel({
                 className="mt-1 w-full rounded border border-white/10 bg-[#10162a] px-2 py-1.5 text-xs text-white/85 outline-none"
               />
             </div>
-          </div>
-        </div>
-      )
-    }
-
-    if (activeRequestTab === 'Vars') {
-      return renderEditableKeyValueTable(
-        requestVars,
-        'Request Variables',
-        (rows) => updateRows('vars', rows, ['variables', 'envVariable']),
-        { key: 'baseUrl', value: '', enabled: true }
-      )
-    }
-
-    if (activeRequestTab === 'Script') {
-      return (
-        <div className="grid gap-3 xl:grid-cols-2">
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-wide text-white/55">
-              Pre-request Script
-            </p>
-            <textarea
-              value={preRequestScript}
-              onChange={(event) => {
-                const value = event.target.value
-                updateRequest((current) => ({
-                  ...current,
-                  preRequestScript: value,
-                  script: {
-                    ...(current.script || {}),
-                    preRequest: value,
-                  },
-                }))
-              }}
-              placeholder="// Add pre-request script"
-              className="h-[190px] w-full resize-y rounded-md border border-white/10 bg-[#0a0f1f] p-3 font-mono text-xs leading-5 text-[#e8d7aa] outline-none"
-            />
-          </div>
-          <div>
-            <p className="mb-2 text-xs uppercase tracking-wide text-white/55">
-              Post-response Script
-            </p>
-            <textarea
-              value={postResponseScript}
-              onChange={(event) => {
-                const value = event.target.value
-                updateRequest((current) => ({
-                  ...current,
-                  postResponseScript: value,
-                  script: {
-                    ...(current.script || {}),
-                    postResponse: value,
-                  },
-                }))
-              }}
-              placeholder="// Add post-response script"
-              className="h-[190px] w-full resize-y rounded-md border border-white/10 bg-[#0a0f1f] p-3 font-mono text-xs leading-5 text-[#e8d7aa] outline-none"
-            />
           </div>
         </div>
       )

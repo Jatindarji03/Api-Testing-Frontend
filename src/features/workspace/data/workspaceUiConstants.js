@@ -1,4 +1,4 @@
-const requestTabs = ['Params', 'Body', 'Headers', 'Auth', 'Vars', 'Script']
-const responseTabs = ['Response', 'Headers', 'Timeline', 'Tests']
+const requestTabs = ['Params', 'Body', 'Headers', 'Auth']
+const responseTabs = ['Response', 'Headers', 'Timeline']
 
 export { requestTabs, responseTabs }

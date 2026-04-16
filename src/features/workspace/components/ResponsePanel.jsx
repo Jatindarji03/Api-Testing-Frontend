@@ -54,16 +54,8 @@ function ResponsePanel({
       )
     }
 
-    if (activeResponseTab === 'Tests') {
-      return (
-        <pre className="h-[430px] overflow-auto p-3 font-mono text-xs leading-5 text-[#e8d7aa]">
-          No tests executed.
-        </pre>
-      )
-    }
-
     return (
-      <pre className="h-[430px] overflow-auto p-3 font-mono text-xs leading-5 text-[#e8d7aa]">
+      <pre className="h-130 overflow-auto p-3 font-mono text-xs leading-5 text-[#e8d7aa]">
         {responseContent}
       </pre>
     )
