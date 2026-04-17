@@ -73,8 +73,16 @@ function SignInPage() {
       setIsSubmitting(true)
       setApiError('')
       const res = await signIn(form)
-      const token = res?.tokenInfo ?? res?.token;
-      const user = res?.user ?? (res?.userId ? { id: res.userId } : null)
+      const token =
+        res?.data?.tokenInfo ??
+        res?.tokenInfo ??
+        res?.data?.token ??
+        res?.token
+      const user =
+        res?.data?.user ??
+        res?.user ??
+        (res?.data?.userId ? { id: res.data.userId } : null) ??
+        (res?.userId ? { id: res.userId } : null)
       if (token) {
         localStorage.setItem(
           'token',

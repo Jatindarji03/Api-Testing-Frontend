@@ -3,7 +3,7 @@ function getStoredToken() {
 }
 
 function isAuthenticated() {
-  return Boolean(getStoredToken() || localStorage.getItem('isAuthenticated') === 'true')
+  return Boolean(getStoredToken())
 }
 
 function markAuthenticated() {

@@ -4,17 +4,19 @@ import { markAuthenticated } from '../../utils/auth'
 import { useUser } from '../../context/useUser'
 
 function extractUser(res) {
-  return res?.user ?? res?.data?.user
+  return res?.data?.user ?? res?.user
 }
 
 function extractToken(res) {
   return (
-    res?.tokens?.accessToken ??
-    res?.token ??
+    res?.data?.tokens ??
     res?.tokens ??
-    res?.data?.tokens?.accessToken ??
+    res?.data?.tokenInfo ??
+    res?.tokenInfo ??
     res?.data?.token ??
-    res?.data?.tokens
+    res?.token ??
+    res?.data?.tokens?.accessToken ??
+    res?.tokens?.accessToken
   )
 }
 
